@@ -1,0 +1,14 @@
+appId: com.ai-email-manager.app
+productName: AI Email Manager
+directories:
+  buildResources: resources
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.*,.prettierrc.*,tsconfig.*,tailwind.*,postcss.*}'
+mac:
+  target:
+    - dmg
+    - zip
+  artifactName: ${name}-${version}-${arch}.${ext}
