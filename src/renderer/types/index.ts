@@ -1,1 +1,10 @@
-export type { Email, Account, Category, ElectronAPI } from '../../shared/types'
+export type {
+  Email,
+  EmailSend,
+  Account,
+  AccountCreate,
+  Category,
+  ElectronAPI,
+  IpcResult,
+  SyncStatus
+} from '../../shared/types'

@@ -2,6 +2,8 @@ import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
+import { getDb, closeDb } from './db/database'
+import { startScheduler } from './email/syncScheduler'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -37,7 +39,9 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  getDb()
   registerIpcHandlers()
+  startScheduler()
   createWindow()
 
   app.on('activate', () => {
@@ -45,6 +49,10 @@ app.whenReady().then(() => {
       createWindow()
     }
   })
+})
+
+app.on('will-quit', () => {
+  closeDb()
 })
 
 app.on('window-all-closed', () => {
