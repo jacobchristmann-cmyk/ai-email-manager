@@ -13,6 +13,11 @@ interface EmailState {
   selectedMailbox: string | null
   searchQuery: string
   selectedCategoryId: string | null
+  // AI search
+  aiSearchMode: boolean
+  aiSearchResults: string[] | null
+  isAiSearching: boolean
+  aiSearchError: string | null
   // Compose
   composeOpen: boolean
   composeData: Partial<EmailSend> | null
@@ -22,6 +27,7 @@ interface EmailState {
   selectEmail: (id: string | null) => Promise<void>
   markRead: (id: string) => void
   deleteEmail: (id: string) => Promise<void>
+  setEmailCategory: (emailId: string, categoryId: string | null) => Promise<void>
   syncAccount: (accountId: string) => Promise<void>
   syncAll: () => Promise<void>
   handleSyncStatus: (status: SyncStatus) => void
@@ -31,6 +37,10 @@ interface EmailState {
   setSearchQuery: (query: string) => void
   setSelectedCategoryId: (id: string | null) => void
   filteredEmails: () => Email[]
+  // AI search
+  setAiSearchMode: (enabled: boolean) => void
+  aiSearch: (query: string) => Promise<void>
+  clearAiSearch: () => void
   // Compose
   openCompose: (prefill?: Partial<EmailSend>) => void
   closeCompose: () => void
@@ -48,6 +58,10 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   selectedMailbox: null,
   searchQuery: '',
   selectedCategoryId: null,
+  aiSearchMode: false,
+  aiSearchResults: null,
+  isAiSearching: false,
+  aiSearchError: null,
   composeOpen: false,
   composeData: null,
   isSending: false,
@@ -101,6 +115,24 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     })
   },
 
+  setEmailCategory: async (emailId, categoryId) => {
+    // Optimistic update — change UI immediately
+    set((state) => ({
+      emails: state.emails.map((e) =>
+        e.id === emailId ? { ...e, categoryId } : e
+      )
+    }))
+    // Persist to backend (fire-and-forget)
+    window.electronAPI.emailSetCategory(emailId, categoryId).catch(() => {
+      // If backend fails, revert
+      set((state) => ({
+        emails: state.emails.map((e) =>
+          e.id === emailId ? { ...e, categoryId: null } : e
+        )
+      }))
+    })
+  },
+
   syncAccount: async (accountId) => {
     set({ isSyncing: true, syncMessage: 'Synchronisiere...' })
     await window.electronAPI.syncAccount(accountId)
@@ -144,11 +176,20 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   },
 
   filteredEmails: () => {
-    const { emails, searchQuery, selectedCategoryId } = get()
+    const { emails, searchQuery, selectedCategoryId, aiSearchResults } = get()
     let filtered = emails
 
     if (selectedCategoryId) {
       filtered = filtered.filter((e) => e.categoryId === selectedCategoryId)
+    }
+
+    // If AI search results are active, filter and sort by AI relevance
+    if (aiSearchResults) {
+      const idSet = new Set(aiSearchResults)
+      filtered = filtered.filter((e) => idSet.has(e.id))
+      // Sort by AI relevance order
+      filtered.sort((a, b) => aiSearchResults.indexOf(a.id) - aiSearchResults.indexOf(b.id))
+      return filtered
     }
 
     if (searchQuery.trim()) {
@@ -162,6 +203,31 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     }
 
     return filtered
+  },
+
+  // AI search
+  setAiSearchMode: (enabled) => {
+    set({ aiSearchMode: enabled, aiSearchResults: null, aiSearchError: null })
+  },
+
+  aiSearch: async (query) => {
+    if (!query.trim()) return
+    set({ isAiSearching: true, aiSearchError: null, aiSearchResults: null })
+    const { selectedAccountId, selectedMailbox } = get()
+    const result = await window.electronAPI.emailAiSearch({
+      query,
+      accountId: selectedAccountId ?? undefined,
+      mailbox: selectedMailbox ?? undefined
+    })
+    if (result.success) {
+      set({ aiSearchResults: result.data!, isAiSearching: false })
+    } else {
+      set({ aiSearchError: result.error ?? 'KI-Suche fehlgeschlagen', isAiSearching: false })
+    }
+  },
+
+  clearAiSearch: () => {
+    set({ aiSearchResults: null, aiSearchError: null })
   },
 
   // Compose

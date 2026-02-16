@@ -50,7 +50,20 @@ const electronAPI: ElectronAPI = {
 
   // AI classification
   emailClassify: (emailIds) => ipcRenderer.invoke('email:classify', emailIds),
-  emailClassifyAll: () => ipcRenderer.invoke('email:classify-all')
+  emailClassifyAll: () => ipcRenderer.invoke('email:classify-all'),
+  emailSetCategory: (emailId, categoryId) => ipcRenderer.invoke('email:set-category', emailId, categoryId),
+
+  // AI search
+  emailAiSearch: (params) => ipcRenderer.invoke('email:ai-search', params),
+
+  // Google OAuth
+  googleLogin: () => ipcRenderer.invoke('auth:google-login'),
+  googleLogout: () => ipcRenderer.invoke('auth:google-logout'),
+  googleStatus: () => ipcRenderer.invoke('auth:google-status'),
+
+  // AI models
+  aiDefaultModels: (provider) => ipcRenderer.invoke('ai:default-models', provider),
+  aiListModels: (params) => ipcRenderer.invoke('ai:list-models', params)
 }
 
 if (process.contextIsolated) {

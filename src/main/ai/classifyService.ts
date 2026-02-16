@@ -1,9 +1,13 @@
-import { getAllSettings } from '../db/settingsDao'
 import { listEmails } from '../db/emailDao'
-import { listCategories, updateEmailCategories } from '../db/categoryDao'
+import { listCategories, updateEmailCategories, listCategoryCorrections } from '../db/categoryDao'
+import { callAI } from './aiClient'
 import type { Category, Email } from '../../shared/types'
 
-function buildPrompt(categories: Category[], emails: { id: string; subject: string; from: string; snippet: string }[]): string {
+function buildPrompt(
+  categories: Category[],
+  emails: { id: string; subject: string; from: string; snippet: string }[],
+  corrections: { subject: string; from: string; snippet: string; categoryId: string }[]
+): string {
   const catList = categories.map((c) => `- ${c.id}: ${c.name} (${c.description})`).join('\n')
   const emailList = emails
     .map(
@@ -12,11 +16,21 @@ function buildPrompt(categories: Category[], emails: { id: string; subject: stri
     )
     .join('\n')
 
+  let trainingSection = ''
+  if (corrections.length > 0) {
+    const examples = corrections
+      .map(
+        (c) => `- Von: ${c.from} | Betreff: ${c.subject} → ${c.categoryId}`
+      )
+      .join('\n')
+    trainingSection = `\n\nDer Benutzer hat folgende E-Mails manuell kategorisiert. Lerne aus diesen Beispielen und wende ähnliche Zuordnungen an:\n${examples}\n`
+  }
+
   return `Du bist ein E-Mail-Klassifikator. Ordne jede E-Mail einer Kategorie zu.
 
 Verfügbare Kategorien:
 ${catList}
-
+${trainingSection}
 E-Mails:
 ${emailList}
 
@@ -25,69 +39,7 @@ Beispiel: {"email-id-1": "cat-arbeit", "email-id-2": "cat-newsletter"}
 Keine Erklärungen, nur JSON.`
 }
 
-async function callOpenAI(
-  apiKey: string,
-  model: string,
-  prompt: string
-): Promise<Record<string, string>> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: model || 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1
-    })
-  })
-
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`OpenAI API Fehler (${response.status}): ${text}`)
-  }
-
-  const data = (await response.json()) as {
-    choices: { message: { content: string } }[]
-  }
-  const content = data.choices[0]?.message?.content ?? '{}'
-  return parseJsonResponse(content)
-}
-
-async function callAnthropic(
-  apiKey: string,
-  model: string,
-  prompt: string
-): Promise<Record<string, string>> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model: model || 'claude-sonnet-4-5-20250929',
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }]
-    })
-  })
-
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`Anthropic API Fehler (${response.status}): ${text}`)
-  }
-
-  const data = (await response.json()) as {
-    content: { type: string; text: string }[]
-  }
-  const content = data.content.find((c) => c.type === 'text')?.text ?? '{}'
-  return parseJsonResponse(content)
-}
-
 function parseJsonResponse(content: string): Record<string, string> {
-  // Extract JSON from response (handle markdown code blocks)
   const jsonMatch = content.match(/\{[\s\S]*\}/)
   if (!jsonMatch) return {}
 
@@ -110,10 +62,7 @@ function parseJsonResponse(content: string): Record<string, string> {
 
 async function classifyBatch(
   emails: Email[],
-  categories: Category[],
-  provider: string,
-  apiKey: string,
-  model: string
+  categories: Category[]
 ): Promise<Record<string, string>> {
   const emailData = emails.map((e) => ({
     id: e.id,
@@ -122,24 +71,13 @@ async function classifyBatch(
     snippet: e.body.replace(/\s+/g, ' ').slice(0, 200)
   }))
 
-  const prompt = buildPrompt(categories, emailData)
-
-  if (provider === 'anthropic') {
-    return callAnthropic(apiKey, model, prompt)
-  }
-  return callOpenAI(apiKey, model, prompt)
+  const corrections = listCategoryCorrections()
+  const prompt = buildPrompt(categories, emailData, corrections)
+  const response = await callAI(prompt)
+  return parseJsonResponse(response)
 }
 
 export async function classifyEmails(emailIds: string[]): Promise<Record<string, string>> {
-  const settings = getAllSettings()
-  const provider = settings.aiProvider || 'openai'
-  const apiKey = settings.aiApiKey
-  const model = settings.aiModel || ''
-
-  if (!apiKey?.trim()) {
-    throw new Error('Kein API-Schlüssel konfiguriert. Bitte in den Einstellungen hinterlegen.')
-  }
-
   const categories = listCategories()
   if (categories.length === 0) {
     throw new Error('Keine Kategorien vorhanden.')
@@ -155,7 +93,7 @@ export async function classifyEmails(emailIds: string[]): Promise<Record<string,
 
   for (let i = 0; i < targetEmails.length; i += batchSize) {
     const batch = targetEmails.slice(i, i + batchSize)
-    const results = await classifyBatch(batch, categories, provider, apiKey, model)
+    const results = await classifyBatch(batch, categories)
     Object.assign(allResults, results)
   }
 

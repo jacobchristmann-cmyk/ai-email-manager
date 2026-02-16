@@ -10,11 +10,15 @@ import {
   getAllSettings, setMultipleSettings
 } from './db/settingsDao'
 import {
-  listCategories, getCategory, createCategory, updateCategory, deleteCategory
+  listCategories, getCategory, createCategory, updateCategory, deleteCategory,
+  updateEmailCategory, addCategoryCorrection
 } from './db/categoryDao'
 import { syncAccount, syncAllAccounts, testConnection } from './email/syncService'
 import { sendEmail } from './email/smtpClient'
 import { classifyEmails, classifyAllEmails } from './ai/classifyService'
+import { aiSearchEmails } from './ai/searchService'
+import { getDefaultModels, listModelsFromApi } from './ai/modelService'
+import { startGoogleOAuth } from './ai/googleOAuth'
 import { updateSchedulerInterval } from './email/syncScheduler'
 import type { AccountCreate, CategoryCreate, EmailSend, IpcResult } from '../shared/types'
 
@@ -251,6 +255,31 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  // === Email Category Assignment ===
+
+  ipcMain.handle('email:set-category', async (_e, emailId: string, categoryId: string | null) => {
+    try {
+      updateEmailCategory(emailId, categoryId)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Setzen der Kategorie')
+    }
+
+    // Save as training data (non-critical — don't let this block the category update)
+    if (categoryId) {
+      try {
+        const email = getEmail(emailId)
+        if (email) {
+          const snippet = email.body.replace(/\s+/g, ' ').slice(0, 300)
+          addCategoryCorrection(email.subject, email.from, snippet, categoryId)
+        }
+      } catch {
+        // Training data save failed — not critical, ignore
+      }
+    }
+
+    return ok(undefined)
+  })
+
   // === AI Classification Handlers ===
 
   ipcMain.handle('email:classify', async (_e, emailIds: string[]) => {
@@ -268,6 +297,83 @@ export function registerIpcHandlers(): void {
       return ok(results)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler bei der Klassifizierung')
+    }
+  })
+
+  // === AI Search Handler ===
+
+  ipcMain.handle('email:ai-search', async (_e, params: { query: string; accountId?: string; mailbox?: string }) => {
+    try {
+      const results = await aiSearchEmails(params.query, params.accountId, params.mailbox)
+      return ok(results)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler bei der KI-Suche')
+    }
+  })
+
+  // === Google OAuth Handlers ===
+
+  ipcMain.handle('auth:google-login', async () => {
+    try {
+      const settings = getAllSettings()
+      const clientId = settings.googleClientId
+      const clientSecret = settings.googleClientSecret
+
+      if (!clientId?.trim() || !clientSecret?.trim()) {
+        return fail('Bitte zuerst Google Client-ID und Client-Secret eingeben und speichern.')
+      }
+
+      const tokens = await startGoogleOAuth(clientId, clientSecret)
+      setMultipleSettings({
+        googleAccessToken: tokens.accessToken,
+        googleRefreshToken: tokens.refreshToken,
+        googleTokenExpiry: String(tokens.expiresAt)
+      })
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Google-Anmeldung fehlgeschlagen')
+    }
+  })
+
+  ipcMain.handle('auth:google-logout', async () => {
+    try {
+      setMultipleSettings({
+        googleAccessToken: '',
+        googleRefreshToken: '',
+        googleTokenExpiry: ''
+      })
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Abmelden')
+    }
+  })
+
+  ipcMain.handle('auth:google-status', async () => {
+    try {
+      const settings = getAllSettings()
+      const isConnected = !!(settings.googleAccessToken && settings.googleRefreshToken)
+      return ok({ isConnected })
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Prüfen des Status')
+    }
+  })
+
+  // === AI Model Listing ===
+
+  ipcMain.handle('ai:default-models', async (_e, provider: string) => {
+    try {
+      return ok(getDefaultModels(provider))
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Laden der Modelle')
+    }
+  })
+
+  ipcMain.handle('ai:list-models', async (_e, params: { provider: string; apiKey?: string }) => {
+    try {
+      const models = await listModelsFromApi(params)
+      return ok(models)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Laden der Modelle')
     }
   })
 }

@@ -137,6 +137,16 @@ export interface ElectronAPI {
   // AI classification
   emailClassify: (emailIds: string[]) => Promise<IpcResult<Record<string, string>>>
   emailClassifyAll: () => Promise<IpcResult<Record<string, string>>>
+  emailSetCategory: (emailId: string, categoryId: string | null) => Promise<IpcResult<void>>
+  // AI search
+  emailAiSearch: (params: { query: string; accountId?: string; mailbox?: string }) => Promise<IpcResult<string[]>>
+  // Google OAuth
+  googleLogin: () => Promise<IpcResult<void>>
+  googleLogout: () => Promise<IpcResult<void>>
+  googleStatus: () => Promise<IpcResult<{ isConnected: boolean }>>
+  // AI models
+  aiDefaultModels: (provider: string) => Promise<IpcResult<{ id: string; name: string }[]>>
+  aiListModels: (params: { provider: string; apiKey?: string }) => Promise<IpcResult<{ id: string; name: string }[]>>
 }
 
 // === IPC Channel Types ===
@@ -168,6 +178,13 @@ export type IpcChannels =
   | 'category:delete'
   | 'email:classify'
   | 'email:classify-all'
+  | 'email:set-category'
+  | 'email:ai-search'
+  | 'auth:google-login'
+  | 'auth:google-logout'
+  | 'auth:google-status'
+  | 'ai:default-models'
+  | 'ai:list-models'
 
 // === Window augmentation ===
 
