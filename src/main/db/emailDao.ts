@@ -7,6 +7,7 @@ interface EmailRow {
   account_id: string
   message_id: string
   uid: number
+  mailbox: string
   subject: string
   from_address: string
   to_address: string
@@ -24,6 +25,7 @@ function rowToEmail(row: EmailRow): Email {
     accountId: row.account_id,
     messageId: row.message_id,
     uid: row.uid,
+    mailbox: row.mailbox || 'INBOX',
     subject: row.subject,
     from: row.from_address,
     to: row.to_address,
@@ -39,6 +41,7 @@ export interface EmailInsert {
   accountId: string
   messageId: string
   uid: number
+  mailbox: string
   subject: string
   from: string
   to: string
@@ -52,9 +55,9 @@ export function insertEmail(data: EmailInsert): Email | null {
   const id = uuid()
   try {
     db.prepare(
-      `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, subject, from_address, to_address, date, body, body_html)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, data.accountId, data.messageId, data.uid, data.subject, data.from, data.to, data.date, data.body, data.bodyHtml ?? null)
+      `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, mailbox, subject, from_address, to_address, date, body, body_html)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, data.accountId, data.messageId, data.uid, data.mailbox, data.subject, data.from, data.to, data.date, data.body, data.bodyHtml ?? null)
     const row = db.prepare('SELECT * FROM emails WHERE id = ?').get(id) as EmailRow | undefined
     return row ? rowToEmail(row) : null
   } catch {
@@ -65,13 +68,13 @@ export function insertEmail(data: EmailInsert): Email | null {
 export function insertEmails(emails: EmailInsert[]): number {
   const db = getDb()
   const stmt = db.prepare(
-    `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, subject, from_address, to_address, date, body, body_html)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, mailbox, subject, from_address, to_address, date, body, body_html)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   let inserted = 0
   const transaction = db.transaction(() => {
     for (const e of emails) {
-      const result = stmt.run(uuid(), e.accountId, e.messageId, e.uid, e.subject, e.from, e.to, e.date, e.body, e.bodyHtml ?? null)
+      const result = stmt.run(uuid(), e.accountId, e.messageId, e.uid, e.mailbox, e.subject, e.from, e.to, e.date, e.body, e.bodyHtml ?? null)
       if (result.changes > 0) inserted++
     }
   })
@@ -79,8 +82,12 @@ export function insertEmails(emails: EmailInsert[]): number {
   return inserted
 }
 
-export function listEmails(accountId?: string): Email[] {
+export function listEmails(accountId?: string, mailbox?: string): Email[] {
   const db = getDb()
+  if (accountId && mailbox) {
+    const rows = db.prepare('SELECT * FROM emails WHERE account_id = ? AND mailbox = ? ORDER BY date DESC').all(accountId, mailbox) as EmailRow[]
+    return rows.map(rowToEmail)
+  }
   if (accountId) {
     const rows = db.prepare('SELECT * FROM emails WHERE account_id = ? ORDER BY date DESC').all(accountId) as EmailRow[]
     return rows.map(rowToEmail)
@@ -105,8 +112,12 @@ export function deleteEmail(id: string): void {
   db.prepare('DELETE FROM emails WHERE id = ?').run(id)
 }
 
-export function getUnreadCount(accountId?: string): number {
+export function getUnreadCount(accountId?: string, mailbox?: string): number {
   const db = getDb()
+  if (accountId && mailbox) {
+    const row = db.prepare('SELECT COUNT(*) as count FROM emails WHERE account_id = ? AND mailbox = ? AND is_read = 0').get(accountId, mailbox) as { count: number }
+    return row.count
+  }
   if (accountId) {
     const row = db.prepare('SELECT COUNT(*) as count FROM emails WHERE account_id = ? AND is_read = 0').get(accountId) as { count: number }
     return row.count

@@ -1,5 +1,6 @@
 import { ImapFlow } from 'imapflow'
 import { simpleParser } from 'mailparser'
+import type { Mailbox } from '../../shared/types'
 
 export interface ImapConfig {
   host: string
@@ -19,36 +20,48 @@ export interface FetchedEmail {
   bodyHtml: string | null
 }
 
-export async function testImapConnection(config: ImapConfig): Promise<void> {
-  const client = new ImapFlow({
+function createClient(config: ImapConfig): ImapFlow {
+  return new ImapFlow({
     host: config.host,
     port: config.port,
     secure: config.port === 993,
     auth: { user: config.username, pass: config.password },
     logger: false
   })
+}
+
+export async function testImapConnection(config: ImapConfig): Promise<void> {
+  const client = createClient(config)
   await client.connect()
   await client.logout()
 }
 
-export async function fetchEmails(config: ImapConfig, sinceUid: number = 0): Promise<FetchedEmail[]> {
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: config.port === 993,
-    auth: { user: config.username, pass: config.password },
-    logger: false
-  })
+export async function listMailboxes(config: ImapConfig): Promise<Mailbox[]> {
+  const client = createClient(config)
+  try {
+    await client.connect()
+    const list = await client.list()
+    return list.map((mb) => ({
+      name: mb.name,
+      path: mb.path,
+      specialUse: mb.specialUse || undefined
+    }))
+  } finally {
+    await client.logout().catch(() => {})
+  }
+}
 
+export async function fetchEmails(config: ImapConfig, sinceUid: number = 0, mailbox: string = 'INBOX'): Promise<FetchedEmail[]> {
+  const client = createClient(config)
   const emails: FetchedEmail[] = []
 
   try {
     await client.connect()
-    const lock = await client.getMailboxLock('INBOX')
+    const lock = await client.getMailboxLock(mailbox)
 
     try {
-      const mailbox = client.mailbox
-      if (!mailbox || !mailbox.exists || mailbox.exists === 0) {
+      const mb = client.mailbox
+      if (!mb || !mb.exists || mb.exists === 0) {
         return emails
       }
 
@@ -57,7 +70,7 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0): Pro
         range = `${sinceUid + 1}:*`
       } else {
         // First sync: last 50 messages by sequence number
-        const total = mailbox.exists
+        const total = mb.exists
         const start = Math.max(1, total - 49)
         range = `${start}:*`
       }

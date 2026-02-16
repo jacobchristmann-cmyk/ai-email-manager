@@ -75,6 +75,26 @@ export function getDb(): Database.Database {
   if (!columns.some((c) => c.name === 'body_html')) {
     db.exec('ALTER TABLE emails ADD COLUMN body_html TEXT')
   }
+  if (!columns.some((c) => c.name === 'mailbox')) {
+    db.exec("ALTER TABLE emails ADD COLUMN mailbox TEXT DEFAULT 'INBOX'")
+  }
+
+  // Mailbox sync state table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mailbox_sync_state (
+      account_id TEXT NOT NULL,
+      mailbox TEXT NOT NULL,
+      last_uid INTEGER DEFAULT 0,
+      PRIMARY KEY (account_id, mailbox),
+      FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+    )
+  `)
+
+  // Migrate existing last_uid from accounts to mailbox_sync_state for INBOX
+  db.exec(`
+    INSERT OR IGNORE INTO mailbox_sync_state (account_id, mailbox, last_uid)
+    SELECT id, 'INBOX', last_uid FROM accounts WHERE last_uid > 0
+  `)
 
   return db
 }

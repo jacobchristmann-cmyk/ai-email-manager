@@ -10,6 +10,7 @@ interface EmailState {
   unreadCount: number
   // Filter & search
   selectedAccountId: string | null
+  selectedMailbox: string | null
   searchQuery: string
   selectedCategoryId: string | null
   // Compose
@@ -17,7 +18,7 @@ interface EmailState {
   composeData: Partial<EmailSend> | null
   isSending: boolean
 
-  loadEmails: (accountId?: string) => Promise<void>
+  loadEmails: (accountId?: string, mailbox?: string) => Promise<void>
   selectEmail: (id: string | null) => Promise<void>
   markRead: (id: string) => void
   deleteEmail: (id: string) => Promise<void>
@@ -26,6 +27,7 @@ interface EmailState {
   handleSyncStatus: (status: SyncStatus) => void
   // Filter & search
   setSelectedAccountId: (id: string | null) => void
+  setSelectedMailbox: (mailbox: string | null) => void
   setSearchQuery: (query: string) => void
   setSelectedCategoryId: (id: string | null) => void
   filteredEmails: () => Email[]
@@ -43,16 +45,18 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   syncMessage: null,
   unreadCount: 0,
   selectedAccountId: null,
+  selectedMailbox: null,
   searchQuery: '',
   selectedCategoryId: null,
   composeOpen: false,
   composeData: null,
   isSending: false,
 
-  loadEmails: async (accountId?) => {
+  loadEmails: async (accountId?, mailbox?) => {
     set({ isLoading: true })
     const id = accountId ?? get().selectedAccountId ?? undefined
-    const result = await window.electronAPI.emailList(id)
+    const mb = mailbox ?? get().selectedMailbox ?? undefined
+    const result = await window.electronAPI.emailList(id, mb)
     if (result.success) {
       const emails = result.data!
       const unreadCount = emails.filter((e) => !e.isRead).length
@@ -112,16 +116,23 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       set({ isSyncing: true, syncMessage: status.message })
     } else {
       set({ isSyncing: false, syncMessage: status.message })
-      // Reload emails after sync completes, respecting account filter
+      // Reload emails after sync completes, respecting account + mailbox filter
       const accountId = get().selectedAccountId ?? undefined
-      get().loadEmails(accountId)
+      const mailbox = get().selectedMailbox ?? undefined
+      get().loadEmails(accountId, mailbox)
     }
   },
 
   // Filter & search
   setSelectedAccountId: (id) => {
-    set({ selectedAccountId: id, selectedEmailId: null })
+    set({ selectedAccountId: id, selectedMailbox: null, selectedEmailId: null })
     get().loadEmails(id ?? undefined)
+  },
+
+  setSelectedMailbox: (mailbox) => {
+    set({ selectedMailbox: mailbox, selectedEmailId: null })
+    const accountId = get().selectedAccountId ?? undefined
+    get().loadEmails(accountId, mailbox ?? undefined)
   },
 
   setSearchQuery: (query) => {

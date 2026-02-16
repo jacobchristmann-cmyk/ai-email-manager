@@ -43,6 +43,14 @@ export interface AccountCreate {
   password: string
 }
 
+// === Mailbox ===
+
+export interface Mailbox {
+  name: string
+  path: string
+  specialUse?: string
+}
+
 // === Email ===
 
 export interface Email {
@@ -50,6 +58,7 @@ export interface Email {
   accountId: string
   messageId: string
   uid: number
+  mailbox: string
   subject: string
   from: string
   to: string
@@ -103,8 +112,10 @@ export interface ElectronAPI {
   accountUpdate: (id: string, data: Partial<AccountCreate>) => Promise<IpcResult<Account>>
   accountDelete: (id: string) => Promise<IpcResult<void>>
   accountTestConnection: (config: AccountCreate) => Promise<IpcResult<void>>
+  // Mailbox methods
+  mailboxList: (accountId: string) => Promise<IpcResult<Mailbox[]>>
   // Email methods
-  emailList: (accountId?: string) => Promise<IpcResult<Email[]>>
+  emailList: (accountId?: string, mailbox?: string) => Promise<IpcResult<Email[]>>
   emailGet: (id: string) => Promise<IpcResult<Email>>
   emailMarkRead: (id: string) => Promise<IpcResult<void>>
   emailSend: (data: EmailSend) => Promise<IpcResult<void>>
@@ -137,6 +148,7 @@ export type IpcChannels =
   | 'account:update'
   | 'account:delete'
   | 'account:test-connection'
+  | 'mailbox:list'
   | 'email:list'
   | 'email:get'
   | 'email:mark-read'

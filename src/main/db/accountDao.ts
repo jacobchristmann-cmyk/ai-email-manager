@@ -95,3 +95,18 @@ export function getLastUid(id: string): number {
   const row = db.prepare('SELECT last_uid FROM accounts WHERE id = ?').get(id) as { last_uid: number } | undefined
   return row?.last_uid ?? 0
 }
+
+export function getLastUidForMailbox(accountId: string, mailbox: string): number {
+  const db = getDb()
+  const row = db.prepare('SELECT last_uid FROM mailbox_sync_state WHERE account_id = ? AND mailbox = ?').get(accountId, mailbox) as { last_uid: number } | undefined
+  return row?.last_uid ?? 0
+}
+
+export function updateLastSyncForMailbox(accountId: string, mailbox: string, lastUid: number): void {
+  const db = getDb()
+  db.prepare(
+    `INSERT INTO mailbox_sync_state (account_id, mailbox, last_uid) VALUES (?, ?, ?)
+     ON CONFLICT(account_id, mailbox) DO UPDATE SET last_uid = excluded.last_uid`
+  ).run(accountId, mailbox, lastUid)
+  db.prepare("UPDATE accounts SET last_sync_at = datetime('now') WHERE id = ?").run(accountId)
+}

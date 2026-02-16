@@ -12,8 +12,11 @@ const electronAPI: ElectronAPI = {
   accountDelete: (id) => ipcRenderer.invoke('account:delete', id),
   accountTestConnection: (config) => ipcRenderer.invoke('account:test-connection', config),
 
+  // Mailbox methods
+  mailboxList: (accountId) => ipcRenderer.invoke('mailbox:list', accountId),
+
   // Email methods
-  emailList: (accountId?) => ipcRenderer.invoke('email:list', accountId),
+  emailList: (accountId?, mailbox?) => ipcRenderer.invoke('email:list', accountId, mailbox),
   emailGet: (id) => ipcRenderer.invoke('email:get', id),
   emailMarkRead: (id) => ipcRenderer.invoke('email:mark-read', id),
   emailSend: (data) => ipcRenderer.invoke('email:send', data),

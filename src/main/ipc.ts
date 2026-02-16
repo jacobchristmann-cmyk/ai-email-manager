@@ -5,6 +5,7 @@ import {
 import {
   listEmails, getEmail, markRead, deleteEmail
 } from './db/emailDao'
+import { listMailboxes } from './email/imapClient'
 import {
   getAllSettings, setMultipleSettings
 } from './db/settingsDao'
@@ -85,11 +86,29 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  // === Mailbox Handlers ===
+
+  ipcMain.handle('mailbox:list', async (_e, accountId: string) => {
+    try {
+      const account = getAccount(accountId)
+      if (!account) return fail('Account nicht gefunden')
+      const mailboxes = await listMailboxes({
+        host: account.imapHost,
+        port: account.imapPort,
+        username: account.username,
+        password: account.password
+      })
+      return ok(mailboxes)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Laden der Ordner')
+    }
+  })
+
   // === Email Handlers ===
 
-  ipcMain.handle('email:list', async (_e, accountId?: string) => {
+  ipcMain.handle('email:list', async (_e, accountId?: string, mailbox?: string) => {
     try {
-      return ok(listEmails(accountId))
+      return ok(listEmails(accountId, mailbox))
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Laden')
     }

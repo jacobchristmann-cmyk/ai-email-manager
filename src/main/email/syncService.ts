@@ -1,7 +1,7 @@
 import { BrowserWindow, Notification } from 'electron'
-import { getAccount, getLastUid, updateLastSync, listAccounts } from '../db/accountDao'
+import { getAccount, getLastUidForMailbox, updateLastSyncForMailbox, listAccounts } from '../db/accountDao'
 import { insertEmails } from '../db/emailDao'
-import { fetchEmails, testImapConnection } from './imapClient'
+import { fetchEmails, listMailboxes, testImapConnection } from './imapClient'
 import { testSmtpConnection } from './smtpClient'
 import type { AccountCreate, SyncStatus } from '../../shared/types'
 
@@ -23,60 +23,70 @@ export async function syncAccount(accountId: string): Promise<void> {
     const account = getAccount(accountId)
     if (!account) throw new Error('Account nicht gefunden')
 
-    const lastUid = getLastUid(accountId)
-
-    const fetched = await fetchEmails(
-      {
-        host: account.imapHost,
-        port: account.imapPort,
-        username: account.username,
-        password: account.password
-      },
-      lastUid
-    )
-
-    if (fetched.length > 0) {
-      const emails = fetched.map((e) => ({
-        accountId,
-        messageId: e.messageId,
-        uid: e.uid,
-        subject: e.subject,
-        from: e.from,
-        to: e.to,
-        date: e.date,
-        body: e.body,
-        bodyHtml: e.bodyHtml
-      }))
-
-      const inserted = insertEmails(emails)
-
-      const maxUid = Math.max(...fetched.map((e) => e.uid))
-      updateLastSync(accountId, maxUid)
-
-      if (inserted > 0 && Notification.isSupported()) {
-        const notification = new Notification({
-          title: 'Neue E-Mails',
-          body: `${inserted} neue E-Mail(s) in ${account.name}`
-        })
-        notification.on('click', () => {
-          const win = BrowserWindow.getAllWindows()[0]
-          if (win) {
-            win.show()
-            win.focus()
-          }
-        })
-        notification.show()
-      }
-
-      broadcastSyncStatus({
-        accountId,
-        status: 'done',
-        message: `${inserted} neue E-Mail(s) synchronisiert`
-      })
-    } else {
-      updateLastSync(accountId, lastUid)
-      broadcastSyncStatus({ accountId, status: 'done', message: 'Keine neuen E-Mails' })
+    const imapConfig = {
+      host: account.imapHost,
+      port: account.imapPort,
+      username: account.username,
+      password: account.password
     }
+
+    const mailboxes = await listMailboxes(imapConfig)
+    let totalInserted = 0
+
+    for (const mb of mailboxes) {
+      // Skip non-selectable mailboxes (like folder containers)
+      const lastUid = getLastUidForMailbox(accountId, mb.path)
+
+      try {
+        const fetched = await fetchEmails(imapConfig, lastUid, mb.path)
+
+        if (fetched.length > 0) {
+          const emails = fetched.map((e) => ({
+            accountId,
+            messageId: e.messageId,
+            uid: e.uid,
+            mailbox: mb.path,
+            subject: e.subject,
+            from: e.from,
+            to: e.to,
+            date: e.date,
+            body: e.body,
+            bodyHtml: e.bodyHtml
+          }))
+
+          const inserted = insertEmails(emails)
+          totalInserted += inserted
+
+          const maxUid = Math.max(...fetched.map((e) => e.uid))
+          updateLastSyncForMailbox(accountId, mb.path, maxUid)
+        } else {
+          updateLastSyncForMailbox(accountId, mb.path, lastUid)
+        }
+      } catch {
+        // Some mailboxes may not be selectable, skip them
+      }
+    }
+
+    if (totalInserted > 0 && Notification.isSupported()) {
+      const notification = new Notification({
+        title: 'Neue E-Mails',
+        body: `${totalInserted} neue E-Mail(s) in ${account.name}`
+      })
+      notification.on('click', () => {
+        const win = BrowserWindow.getAllWindows()[0]
+        if (win) {
+          win.show()
+          win.focus()
+        }
+      })
+      notification.show()
+    }
+
+    broadcastSyncStatus({
+      accountId,
+      status: 'done',
+      message: totalInserted > 0 ? `${totalInserted} neue E-Mail(s) synchronisiert` : 'Keine neuen E-Mails'
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unbekannter Fehler'
     broadcastSyncStatus({ accountId, status: 'error', message })
