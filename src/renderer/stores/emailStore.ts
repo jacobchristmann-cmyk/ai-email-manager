@@ -20,6 +20,7 @@ interface EmailState {
   loadEmails: (accountId?: string) => Promise<void>
   selectEmail: (id: string | null) => Promise<void>
   markRead: (id: string) => void
+  deleteEmail: (id: string) => Promise<void>
   syncAccount: (accountId: string) => Promise<void>
   syncAll: () => Promise<void>
   handleSyncStatus: (status: SyncStatus) => void
@@ -81,6 +82,19 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       emails: state.emails.map((e) => (e.id === id ? { ...e, isRead: true } : e)),
       unreadCount: Math.max(0, state.unreadCount - 1)
     }))
+  },
+
+  deleteEmail: async (id) => {
+    await window.electronAPI.emailDelete(id)
+    set((state) => {
+      const email = state.emails.find((e) => e.id === id)
+      const wasUnread = email && !email.isRead
+      return {
+        emails: state.emails.filter((e) => e.id !== id),
+        selectedEmailId: state.selectedEmailId === id ? null : state.selectedEmailId,
+        unreadCount: wasUnread ? Math.max(0, state.unreadCount - 1) : state.unreadCount
+      }
+    })
   },
 
   syncAccount: async (accountId) => {

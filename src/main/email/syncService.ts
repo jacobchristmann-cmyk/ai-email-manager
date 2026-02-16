@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, Notification } from 'electron'
 import { getAccount, getLastUid, updateLastSync, listAccounts } from '../db/accountDao'
 import { insertEmails } from '../db/emailDao'
 import { fetchEmails, testImapConnection } from './imapClient'
@@ -44,13 +44,29 @@ export async function syncAccount(accountId: string): Promise<void> {
         from: e.from,
         to: e.to,
         date: e.date,
-        body: e.body
+        body: e.body,
+        bodyHtml: e.bodyHtml
       }))
 
       const inserted = insertEmails(emails)
 
       const maxUid = Math.max(...fetched.map((e) => e.uid))
       updateLastSync(accountId, maxUid)
+
+      if (inserted > 0 && Notification.isSupported()) {
+        const notification = new Notification({
+          title: 'Neue E-Mails',
+          body: `${inserted} neue E-Mail(s) in ${account.name}`
+        })
+        notification.on('click', () => {
+          const win = BrowserWindow.getAllWindows()[0]
+          if (win) {
+            win.show()
+            win.focus()
+          }
+        })
+        notification.show()
+      }
 
       broadcastSyncStatus({
         accountId,

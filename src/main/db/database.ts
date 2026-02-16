@@ -70,6 +70,12 @@ export function getDb(): Database.Database {
       ('cat-spam', 'Spam', '#6B7280', 'Unerwünschte E-Mails');
   `)
 
+  // Migrations
+  const columns = db.pragma('table_info(emails)') as { name: string }[]
+  if (!columns.some((c) => c.name === 'body_html')) {
+    db.exec('ALTER TABLE emails ADD COLUMN body_html TEXT')
+  }
+
   return db
 }
 

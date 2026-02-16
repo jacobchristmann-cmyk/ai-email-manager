@@ -12,6 +12,7 @@ interface EmailRow {
   to_address: string
   date: string
   body: string
+  body_html: string | null
   is_read: number
   category_id: string | null
   created_at: string
@@ -28,6 +29,7 @@ function rowToEmail(row: EmailRow): Email {
     to: row.to_address,
     date: row.date,
     body: row.body,
+    bodyHtml: row.body_html ?? null,
     isRead: row.is_read === 1,
     categoryId: row.category_id
   }
@@ -42,6 +44,7 @@ export interface EmailInsert {
   to: string
   date: string
   body: string
+  bodyHtml?: string | null
 }
 
 export function insertEmail(data: EmailInsert): Email | null {
@@ -49,9 +52,9 @@ export function insertEmail(data: EmailInsert): Email | null {
   const id = uuid()
   try {
     db.prepare(
-      `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, subject, from_address, to_address, date, body)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, data.accountId, data.messageId, data.uid, data.subject, data.from, data.to, data.date, data.body)
+      `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, subject, from_address, to_address, date, body, body_html)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, data.accountId, data.messageId, data.uid, data.subject, data.from, data.to, data.date, data.body, data.bodyHtml ?? null)
     const row = db.prepare('SELECT * FROM emails WHERE id = ?').get(id) as EmailRow | undefined
     return row ? rowToEmail(row) : null
   } catch {
@@ -62,13 +65,13 @@ export function insertEmail(data: EmailInsert): Email | null {
 export function insertEmails(emails: EmailInsert[]): number {
   const db = getDb()
   const stmt = db.prepare(
-    `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, subject, from_address, to_address, date, body)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, subject, from_address, to_address, date, body, body_html)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   let inserted = 0
   const transaction = db.transaction(() => {
     for (const e of emails) {
-      const result = stmt.run(uuid(), e.accountId, e.messageId, e.uid, e.subject, e.from, e.to, e.date, e.body)
+      const result = stmt.run(uuid(), e.accountId, e.messageId, e.uid, e.subject, e.from, e.to, e.date, e.body, e.bodyHtml ?? null)
       if (result.changes > 0) inserted++
     }
   })

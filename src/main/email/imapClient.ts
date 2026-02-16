@@ -15,6 +15,7 @@ export interface FetchedEmail {
   to: string
   date: string
   body: string
+  bodyHtml: string | null
 }
 
 export async function testImapConnection(config: ImapConfig): Promise<void> {
@@ -78,8 +79,11 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0): Pro
           : ''
 
         let body = ''
+        let bodyHtml: string | null = null
         if (msg.source) {
-          body = extractTextBody(msg.source.toString())
+          const raw = msg.source.toString()
+          body = extractTextBody(raw)
+          bodyHtml = extractHtmlBody(raw)
         }
 
         emails.push({
@@ -89,7 +93,8 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0): Pro
           from,
           to,
           date: envelope.date ? envelope.date.toISOString() : new Date().toISOString(),
-          body
+          body,
+          bodyHtml
         })
       }
     } finally {
@@ -127,6 +132,38 @@ function extractTextBody(source: string): string {
   // Fallback: strip HTML tags if we find HTML content
   const htmlStripped = bodyPart.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
   return htmlStripped.slice(0, 5000)
+}
+
+function extractHtmlBody(source: string): string | null {
+  if (!source.includes('text/html')) return null
+
+  const parts = source.split(/\r?\n\r?\n/)
+  if (parts.length < 2) return null
+
+  const bodyPart = parts.slice(1).join('\n\n')
+
+  const htmlMatch = bodyPart.match(
+    /Content-Type: text\/html[^\r\n]*\r?\n(?:Content-Transfer-Encoding:\s*([^\r\n]*)\r?\n)?(?:\r?\n)([\s\S]*?)(?:--[^\r\n]+|$)/i
+  )
+  if (htmlMatch) {
+    const encoding = htmlMatch[1]?.trim().toLowerCase() || ''
+    const content = htmlMatch[2].trim()
+    if (encoding === 'base64') {
+      try {
+        return Buffer.from(content.replace(/\s/g, ''), 'base64').toString('utf-8')
+      } catch {
+        return content
+      }
+    }
+    return decodeBody(content)
+  }
+
+  // For simple non-multipart HTML messages
+  if (!source.includes('boundary=') && source.includes('Content-Type: text/html')) {
+    return decodeBody(bodyPart.trim())
+  }
+
+  return null
 }
 
 function decodeBody(text: string): string {

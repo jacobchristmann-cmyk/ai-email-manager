@@ -55,6 +55,7 @@ export interface Email {
   to: string
   date: string
   body: string
+  bodyHtml: string | null
   isRead: boolean
   categoryId: string | null
 }
