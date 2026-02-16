@@ -1,4 +1,5 @@
 import { ImapFlow } from 'imapflow'
+import { simpleParser } from 'mailparser'
 
 export interface ImapConfig {
   host: string
@@ -80,10 +81,16 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0): Pro
 
         let body = ''
         let bodyHtml: string | null = null
+
         if (msg.source) {
-          const raw = msg.source.toString()
-          body = extractTextBody(raw)
-          bodyHtml = extractHtmlBody(raw)
+          try {
+            const parsed = await simpleParser(msg.source)
+            body = parsed.text || ''
+            bodyHtml = parsed.html || null
+          } catch {
+            // Fallback: use raw source without parsing
+            body = msg.source.toString().slice(0, 5000)
+          }
         }
 
         emails.push({
@@ -105,85 +112,4 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0): Pro
   }
 
   return emails
-}
-
-function extractTextBody(source: string): string {
-  // Simple text extraction from raw email source
-  // Look for text/plain content or fall back to stripping HTML
-  const parts = source.split(/\r?\n\r?\n/)
-  if (parts.length < 2) return ''
-
-  // Skip the headers, get everything after the first blank line
-  const bodyPart = parts.slice(1).join('\n\n')
-
-  // If it's a multipart message, try to find text/plain
-  if (source.includes('Content-Type: text/plain')) {
-    const textMatch = bodyPart.match(
-      /Content-Type: text\/plain[^\r\n]*\r?\n(?:Content-Transfer-Encoding:[^\r\n]*\r?\n)?(?:\r?\n)([\s\S]*?)(?:--[^\r\n]+|$)/i
-    )
-    if (textMatch) return decodeBody(textMatch[1].trim())
-  }
-
-  // For simple non-multipart messages
-  if (!source.includes('boundary=')) {
-    return decodeBody(bodyPart.trim()).slice(0, 5000)
-  }
-
-  // Fallback: strip HTML tags if we find HTML content
-  const htmlStripped = bodyPart.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-  return htmlStripped.slice(0, 5000)
-}
-
-function extractHtmlBody(source: string): string | null {
-  if (!source.includes('text/html')) return null
-
-  const parts = source.split(/\r?\n\r?\n/)
-  if (parts.length < 2) return null
-
-  const bodyPart = parts.slice(1).join('\n\n')
-
-  const htmlMatch = bodyPart.match(
-    /Content-Type: text\/html[^\r\n]*\r?\n(?:Content-Transfer-Encoding:\s*([^\r\n]*)\r?\n)?(?:\r?\n)([\s\S]*?)(?:--[^\r\n]+|$)/i
-  )
-  if (htmlMatch) {
-    const encoding = htmlMatch[1]?.trim().toLowerCase() || ''
-    const content = htmlMatch[2].trim()
-    if (encoding === 'base64') {
-      try {
-        return Buffer.from(content.replace(/\s/g, ''), 'base64').toString('utf-8')
-      } catch {
-        return content
-      }
-    }
-    return decodeBody(content)
-  }
-
-  // For simple non-multipart HTML messages
-  if (!source.includes('boundary=') && source.includes('Content-Type: text/html')) {
-    return decodeBody(bodyPart.trim())
-  }
-
-  return null
-}
-
-function decodeBody(text: string): string {
-  // Handle quoted-printable
-  if (text.includes('=\r\n') || text.includes('=\n') || /=[0-9A-F]{2}/i.test(text)) {
-    try {
-      return text
-        .replace(/=\r?\n/g, '')
-        .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    } catch {
-      return text
-    }
-  }
-  // Handle base64
-  if (/^[A-Za-z0-9+/\r\n]+=*$/.test(text.trim())) {
-    try {
-      return Buffer.from(text.replace(/\s/g, ''), 'base64').toString('utf-8')
-    } catch {
-      return text
-    }
-  }
-  return text
 }
