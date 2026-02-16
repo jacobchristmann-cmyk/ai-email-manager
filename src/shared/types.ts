@@ -114,6 +114,7 @@ export interface ElectronAPI {
   accountTestConnection: (config: AccountCreate) => Promise<IpcResult<void>>
   // Mailbox methods
   mailboxList: (accountId: string) => Promise<IpcResult<Mailbox[]>>
+  mailboxUnreadCounts: (accountId: string) => Promise<IpcResult<Record<string, number>>>
   // Email methods
   emailList: (accountId?: string, mailbox?: string) => Promise<IpcResult<Email[]>>
   emailGet: (id: string) => Promise<IpcResult<Email>>
@@ -149,6 +150,7 @@ export type IpcChannels =
   | 'account:delete'
   | 'account:test-connection'
   | 'mailbox:list'
+  | 'mailbox:unread-counts'
   | 'email:list'
   | 'email:get'
   | 'email:mark-read'

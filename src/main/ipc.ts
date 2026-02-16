@@ -3,7 +3,7 @@ import {
   createAccount, listAccounts, getAccount, updateAccount, deleteAccount
 } from './db/accountDao'
 import {
-  listEmails, getEmail, markRead, deleteEmail
+  listEmails, getEmail, markRead, deleteEmail, getUnreadCounts
 } from './db/emailDao'
 import { listMailboxes } from './email/imapClient'
 import {
@@ -101,6 +101,14 @@ export function registerIpcHandlers(): void {
       return ok(mailboxes)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Laden der Ordner')
+    }
+  })
+
+  ipcMain.handle('mailbox:unread-counts', async (_e, accountId: string) => {
+    try {
+      return ok(getUnreadCounts(accountId))
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Laden der ungelesenen Zähler')
     }
   })
 

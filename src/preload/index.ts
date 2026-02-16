@@ -15,6 +15,8 @@ const electronAPI: ElectronAPI = {
   // Mailbox methods
   mailboxList: (accountId) => ipcRenderer.invoke('mailbox:list', accountId),
 
+  mailboxUnreadCounts: (accountId) => ipcRenderer.invoke('mailbox:unread-counts', accountId),
+
   // Email methods
   emailList: (accountId?, mailbox?) => ipcRenderer.invoke('email:list', accountId, mailbox),
   emailGet: (id) => ipcRenderer.invoke('email:get', id),

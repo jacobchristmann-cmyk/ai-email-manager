@@ -112,6 +112,18 @@ export function deleteEmail(id: string): void {
   db.prepare('DELETE FROM emails WHERE id = ?').run(id)
 }
 
+export function getUnreadCounts(accountId: string): Record<string, number> {
+  const db = getDb()
+  const rows = db.prepare(
+    'SELECT mailbox, COUNT(*) as count FROM emails WHERE account_id = ? AND is_read = 0 GROUP BY mailbox'
+  ).all(accountId) as { mailbox: string; count: number }[]
+  const result: Record<string, number> = {}
+  for (const row of rows) {
+    result[row.mailbox] = row.count
+  }
+  return result
+}
+
 export function getUnreadCount(accountId?: string, mailbox?: string): number {
   const db = getDb()
   if (accountId && mailbox) {

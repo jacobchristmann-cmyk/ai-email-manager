@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../stores/appStore'
 import { useEmailStore } from '../stores/emailStore'
@@ -17,20 +17,8 @@ function getMailboxIcon(mailbox: Mailbox): string {
   }
 }
 
-function getMailboxSortOrder(mailbox: Mailbox): number {
-  switch (mailbox.specialUse) {
-    case '\\Inbox': return 0
-    case '\\Sent': return 1
-    case '\\Drafts': return 2
-    case '\\Junk': return 3
-    case '\\Trash': return 4
-    default: return 5
-  }
-}
-
 export default function Sidebar(): React.JSX.Element {
   const appName = useAppStore((s) => s.appName)
-  const emails = useEmailStore((s) => s.emails)
   const selectedAccountId = useEmailStore((s) => s.selectedAccountId)
   const selectedMailbox = useEmailStore((s) => s.selectedMailbox)
   const setSelectedAccountId = useEmailStore((s) => s.setSelectedAccountId)
@@ -39,9 +27,18 @@ export default function Sidebar(): React.JSX.Element {
   const loadAccounts = useAccountStore((s) => s.loadAccounts)
   const mailboxes = useMailboxStore((s) => s.mailboxes)
   const loadAllMailboxes = useMailboxStore((s) => s.loadAllMailboxes)
+  const unreadCounts = useMailboxStore((s) => s.unreadCounts)
+  const loadAllUnreadCounts = useMailboxStore((s) => s.loadAllUnreadCounts)
+  const getOrderedMailboxes = useMailboxStore((s) => s.getOrderedMailboxes)
+  const reorderMailbox = useMailboxStore((s) => s.reorderMailbox)
   const navigate = useNavigate()
 
   const [expandedAccounts, setExpandedAccounts] = useState<Record<string, boolean>>({})
+
+  // Drag state
+  const [dragAccountId, setDragAccountId] = useState<string | null>(null)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
 
   useEffect(() => {
     loadAccounts()
@@ -50,14 +47,27 @@ export default function Sidebar(): React.JSX.Element {
   useEffect(() => {
     if (accounts.length > 0) {
       loadAllMailboxes()
-      // Expand all accounts by default
+      loadAllUnreadCounts()
       const expanded: Record<string, boolean> = {}
       for (const a of accounts) {
         expanded[a.id] = true
       }
       setExpandedAccounts(expanded)
     }
-  }, [accounts, loadAllMailboxes])
+  }, [accounts, loadAllMailboxes, loadAllUnreadCounts])
+
+  // Reload unread counts when sync completes
+  const syncUnsubRef = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    syncUnsubRef.current = window.electronAPI.onSyncStatus((status) => {
+      if (status.status === 'done') {
+        loadAllUnreadCounts()
+      }
+    })
+    return () => {
+      syncUnsubRef.current?.()
+    }
+  }, [loadAllUnreadCounts])
 
   const toggleAccount = (accountId: string): void => {
     setExpandedAccounts((prev) => ({ ...prev, [accountId]: !prev[accountId] }))
@@ -69,16 +79,35 @@ export default function Sidebar(): React.JSX.Element {
     }
     setSelectedMailbox(mailboxPath)
     navigate('/')
+    // Refresh unread counts when selecting a mailbox
+    useMailboxStore.getState().loadUnreadCounts(accountId)
   }
 
-  const getUnreadForMailbox = (accountId: string, mailboxPath: string): number => {
-    return emails.filter(
-      (e) => e.accountId === accountId && e.mailbox === mailboxPath && !e.isRead
-    ).length
+  const handleDragStart = (accountId: string, index: number): void => {
+    setDragAccountId(accountId)
+    setDragIndex(index)
   }
 
-  const sortedMailboxes = (list: Mailbox[]): Mailbox[] => {
-    return [...list].sort((a, b) => getMailboxSortOrder(a) - getMailboxSortOrder(b))
+  const handleDragOver = (e: React.DragEvent, accountId: string, index: number): void => {
+    e.preventDefault()
+    if (dragAccountId === accountId) {
+      setDropIndex(index)
+    }
+  }
+
+  const handleDrop = (accountId: string, index: number): void => {
+    if (dragAccountId === accountId && dragIndex !== null && dragIndex !== index) {
+      reorderMailbox(accountId, dragIndex, index)
+    }
+    setDragAccountId(null)
+    setDragIndex(null)
+    setDropIndex(null)
+  }
+
+  const handleDragEnd = (): void => {
+    setDragAccountId(null)
+    setDragIndex(null)
+    setDropIndex(null)
   }
 
   const linkClass = (isActive: boolean): string =>
@@ -92,40 +121,54 @@ export default function Sidebar(): React.JSX.Element {
     <aside className="flex w-56 flex-col bg-gray-900 text-white">
       <div className="p-4 text-lg font-bold tracking-tight">{appName}</div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-2">
-        {accounts.map((account) => (
-          <div key={account.id}>
-            <button
-              onClick={() => toggleAccount(account.id)}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
-            >
-              <span className="text-xs">{expandedAccounts[account.id] ? '\u25BC' : '\u25B6'}</span>
-              <span className="truncate">{account.name}</span>
-            </button>
-            {expandedAccounts[account.id] && mailboxes[account.id] && (
-              <div className="ml-3 space-y-0.5">
-                {sortedMailboxes(mailboxes[account.id]).map((mb) => {
-                  const isActive = selectedAccountId === account.id && selectedMailbox === mb.path
-                  const unread = getUnreadForMailbox(account.id, mb.path)
-                  return (
-                    <button
-                      key={mb.path}
-                      onClick={() => handleMailboxClick(account.id, mb.path)}
-                      className={linkClass(isActive) + ' w-full'}
-                    >
-                      <span className="text-sm">{getMailboxIcon(mb)}</span>
-                      <span className="truncate">{mb.name}</span>
-                      {unread > 0 && (
-                        <span className="ml-auto rounded-full bg-blue-600 px-2 py-0.5 text-xs font-medium">
-                          {unread}
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        ))}
+        {accounts.map((account) => {
+          const ordered = mailboxes[account.id] ? getOrderedMailboxes(account.id) : []
+          return (
+            <div key={account.id}>
+              <button
+                onClick={() => toggleAccount(account.id)}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+              >
+                <span className="text-xs">{expandedAccounts[account.id] ? '\u25BC' : '\u25B6'}</span>
+                <span className="truncate">{account.name}</span>
+              </button>
+              {expandedAccounts[account.id] && ordered.length > 0 && (
+                <div className="ml-3 space-y-0.5">
+                  {ordered.map((mb, idx) => {
+                    const isActive = selectedAccountId === account.id && selectedMailbox === mb.path
+                    const unread = unreadCounts[account.id]?.[mb.path] ?? 0
+                    const isDragging = dragAccountId === account.id && dragIndex === idx
+                    const isDropTarget = dragAccountId === account.id && dropIndex === idx
+                    return (
+                      <button
+                        key={mb.path}
+                        draggable
+                        onDragStart={() => handleDragStart(account.id, idx)}
+                        onDragOver={(e) => handleDragOver(e, account.id, idx)}
+                        onDrop={() => handleDrop(account.id, idx)}
+                        onDragEnd={handleDragEnd}
+                        onClick={() => handleMailboxClick(account.id, mb.path)}
+                        className={
+                          linkClass(isActive) + ' w-full' +
+                          (isDragging ? ' opacity-40' : '') +
+                          (isDropTarget ? ' border-t-2 border-blue-500' : '')
+                        }
+                      >
+                        <span className="text-sm">{getMailboxIcon(mb)}</span>
+                        <span className="truncate">{mb.name}</span>
+                        {unread > 0 && (
+                          <span className="ml-auto rounded-full bg-blue-600 px-2 py-0.5 text-xs font-medium">
+                            {unread}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
 
         <div className="my-2 border-t border-gray-700" />
 

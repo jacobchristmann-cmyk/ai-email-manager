@@ -1,15 +1,49 @@
 import { create } from 'zustand'
 import type { Mailbox } from '../../shared/types'
 
+const STORAGE_KEY = 'mailbox-order'
+
+function loadOrderFromStorage(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveOrderToStorage(order: Record<string, string[]>): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(order))
+}
+
+function getMailboxSortOrder(mailbox: Mailbox): number {
+  switch (mailbox.specialUse) {
+    case '\\Inbox': return 0
+    case '\\Sent': return 1
+    case '\\Drafts': return 2
+    case '\\Junk': return 3
+    case '\\Trash': return 4
+    default: return 5
+  }
+}
+
 interface MailboxState {
   mailboxes: Record<string, Mailbox[]>
+  unreadCounts: Record<string, Record<string, number>>
+  mailboxOrder: Record<string, string[]>
   isLoading: boolean
   loadMailboxes: (accountId: string) => Promise<void>
   loadAllMailboxes: () => Promise<void>
+  loadUnreadCounts: (accountId: string) => Promise<void>
+  loadAllUnreadCounts: () => Promise<void>
+  reorderMailbox: (accountId: string, fromIndex: number, toIndex: number) => void
+  getOrderedMailboxes: (accountId: string) => Mailbox[]
 }
 
 export const useMailboxStore = create<MailboxState>((set, get) => ({
   mailboxes: {},
+  unreadCounts: {},
+  mailboxOrder: loadOrderFromStorage(),
   isLoading: false,
 
   loadMailboxes: async (accountId) => {
@@ -30,5 +64,54 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
       }
     }
     set({ isLoading: false })
+  },
+
+  loadUnreadCounts: async (accountId) => {
+    const result = await window.electronAPI.mailboxUnreadCounts(accountId)
+    if (result.success && result.data) {
+      set((state) => ({
+        unreadCounts: { ...state.unreadCounts, [accountId]: result.data! }
+      }))
+    }
+  },
+
+  loadAllUnreadCounts: async () => {
+    const accountsResult = await window.electronAPI.accountList()
+    if (accountsResult.success && accountsResult.data) {
+      for (const account of accountsResult.data) {
+        await get().loadUnreadCounts(account.id)
+      }
+    }
+  },
+
+  reorderMailbox: (accountId, fromIndex, toIndex) => {
+    const ordered = get().getOrderedMailboxes(accountId).map((m) => m.path)
+    const [moved] = ordered.splice(fromIndex, 1)
+    ordered.splice(toIndex, 0, moved)
+    const newOrder = { ...get().mailboxOrder, [accountId]: ordered }
+    set({ mailboxOrder: newOrder })
+    saveOrderToStorage(newOrder)
+  },
+
+  getOrderedMailboxes: (accountId) => {
+    const list = get().mailboxes[accountId] || []
+    const order = get().mailboxOrder[accountId]
+    if (!order) {
+      return [...list].sort((a, b) => getMailboxSortOrder(a) - getMailboxSortOrder(b))
+    }
+    const byPath = new Map(list.map((m) => [m.path, m]))
+    const result: Mailbox[] = []
+    for (const path of order) {
+      const mb = byPath.get(path)
+      if (mb) {
+        result.push(mb)
+        byPath.delete(path)
+      }
+    }
+    // Append any new mailboxes not in saved order
+    const remaining = [...byPath.values()].sort(
+      (a, b) => getMailboxSortOrder(a) - getMailboxSortOrder(b)
+    )
+    return [...result, ...remaining]
   }
 }))
