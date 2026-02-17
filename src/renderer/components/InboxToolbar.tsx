@@ -2,10 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import { useEmailStore } from '../stores/emailStore'
 import { useAccountStore } from '../stores/accountStore'
 import { useCategoryStore } from '../stores/categoryStore'
+import { useChatStore } from '../stores/chatStore'
 
 export default function InboxToolbar(): React.JSX.Element {
   const { accounts } = useAccountStore()
   const { categories, isClassifying, error: classifyError, classifyAll } = useCategoryStore()
+  const { isOpen: isAssistantOpen, toggle: toggleAssistant } = useChatStore()
   const {
     selectedAccountId,
     setSelectedAccountId,
@@ -159,6 +161,18 @@ export default function InboxToolbar(): React.JSX.Element {
           className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
         >
           {isClassifying ? 'Klassifiziere...' : 'KI Kategorisieren'}
+        </button>
+
+        {/* AI Assistant toggle */}
+        <button
+          onClick={toggleAssistant}
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            isAssistantOpen
+              ? 'bg-purple-700 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
+          }`}
+        >
+          KI-Assistent
         </button>
       </div>
 

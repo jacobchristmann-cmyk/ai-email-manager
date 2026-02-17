@@ -2,16 +2,19 @@ import { useEffect } from 'react'
 import { useEmailStore } from '../stores/emailStore'
 import { useAccountStore } from '../stores/accountStore'
 import { useCategoryStore } from '../stores/categoryStore'
+import { useChatStore } from '../stores/chatStore'
 import EmailList from '../components/EmailList'
 import EmailDetail from '../components/EmailDetail'
 import SyncButton from '../components/SyncButton'
 import InboxToolbar from '../components/InboxToolbar'
 import ComposeModal from '../components/ComposeModal'
+import AiAssistant from '../components/AiAssistant'
 
 export default function Inbox(): React.JSX.Element {
   const { loadEmails, handleSyncStatus, openCompose } = useEmailStore()
   const { loadAccounts } = useAccountStore()
   const { loadCategories } = useCategoryStore()
+  const isAssistantOpen = useChatStore((s) => s.isOpen)
 
   useEffect(() => {
     loadEmails()
@@ -46,10 +49,12 @@ export default function Inbox(): React.JSX.Element {
         <div className="w-2/5 border-r border-gray-200 dark:border-gray-700">
           <EmailList />
         </div>
-        {/* Email detail - 60% */}
-        <div className="w-3/5">
+        {/* Email detail */}
+        <div className="flex-1">
           <EmailDetail />
         </div>
+        {/* AI Assistant panel */}
+        {isAssistantOpen && <AiAssistant />}
       </div>
 
       {/* Compose modal */}

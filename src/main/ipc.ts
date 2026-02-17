@@ -1,11 +1,12 @@
-import { ipcMain } from 'electron'
+import { ipcMain, shell } from 'electron'
 import {
   createAccount, listAccounts, getAccount, updateAccount, deleteAccount
 } from './db/accountDao'
 import {
-  listEmails, getEmail, markRead, deleteEmail, getUnreadCounts
+  listEmails, getEmail, markRead, deleteEmail, getUnreadCounts,
+  updateEmailMailbox, insertUnsubscribeLog, updateUnsubscribeStatus, listUnsubscribeLogs
 } from './db/emailDao'
-import { listMailboxes } from './email/imapClient'
+import { listMailboxes, createMailbox, moveEmail } from './email/imapClient'
 import {
   getAllSettings, setMultipleSettings
 } from './db/settingsDao'
@@ -19,9 +20,11 @@ import { classifyEmails, classifyAllEmails } from './ai/classifyService'
 import { aiSearchEmails } from './ai/searchService'
 import { generateSmartReplies } from './ai/replyService'
 import { getDefaultModels, listModelsFromApi } from './ai/modelService'
+import { unsubscribe } from './ai/unsubscribeService'
 import { startGoogleOAuth } from './ai/googleOAuth'
 import { updateSchedulerInterval } from './email/syncScheduler'
-import type { AccountCreate, CategoryCreate, EmailSend, IpcResult } from '../shared/types'
+import { analyzeUnreadEmails, analyzeEmail, chatWithContext } from './ai/assistantService'
+import type { AccountCreate, CategoryCreate, ChatMessage, EmailSend, IpcResult } from '../shared/types'
 
 function ok<T>(data: T): IpcResult<T> {
   return { success: true, data }
@@ -109,6 +112,22 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('mailbox:create', async (_e, accountId: string, path: string) => {
+    try {
+      const account = getAccount(accountId)
+      if (!account) return fail('Account nicht gefunden')
+      await createMailbox({
+        host: account.imapHost,
+        port: account.imapPort,
+        username: account.username,
+        password: account.password
+      }, path)
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Erstellen des Ordners')
+    }
+  })
+
   ipcMain.handle('mailbox:unread-counts', async (_e, accountId: string) => {
     try {
       return ok(getUnreadCounts(accountId))
@@ -163,6 +182,97 @@ export function registerIpcHandlers(): void {
       return ok(undefined)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Löschen')
+    }
+  })
+
+  ipcMain.handle('email:move', async (_e, emailId: string, targetMailbox: string) => {
+    try {
+      const email = getEmail(emailId)
+      if (!email) return fail('E-Mail nicht gefunden')
+      const account = getAccount(email.accountId)
+      if (!account) return fail('Account nicht gefunden')
+      const imapConfig = {
+        host: account.imapHost,
+        port: account.imapPort,
+        username: account.username,
+        password: account.password
+      }
+      await moveEmail(imapConfig, email.uid, email.mailbox, targetMailbox)
+      updateEmailMailbox(emailId, targetMailbox)
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Verschieben')
+    }
+  })
+
+  ipcMain.handle('email:unsubscribe', async (_e, emailId: string) => {
+    try {
+      const email = getEmail(emailId)
+      if (!email) return fail('E-Mail nicht gefunden')
+
+      const result = await unsubscribe(emailId)
+      if (!result) return fail('Kein Abmelde-Link gefunden')
+      if (result.method === 'browser') {
+        await shell.openExternal(result.url)
+      }
+
+      // Move email to "Abgemeldete Newsletter" folder
+      const account = getAccount(email.accountId)
+      if (account) {
+        const imapConfig = {
+          host: account.imapHost,
+          port: account.imapPort,
+          username: account.username,
+          password: account.password
+        }
+        const targetMailbox = 'Abgemeldete Newsletter'
+        try {
+          await createMailbox(imapConfig, targetMailbox)
+          console.log('[Unsubscribe] Mailbox ready:', targetMailbox)
+        } catch (err) {
+          console.error('[Unsubscribe] Failed to create mailbox:', err)
+        }
+        try {
+          await moveEmail(imapConfig, email.uid, email.mailbox, targetMailbox)
+          updateEmailMailbox(emailId, targetMailbox)
+          console.log('[Unsubscribe] Email moved to:', targetMailbox)
+        } catch (err) {
+          console.error('[Unsubscribe] Failed to move email:', err)
+        }
+      }
+
+      // Log the unsubscribe action
+      const status = result.method === 'post' ? 'confirmed' : 'pending'
+      const log = insertUnsubscribeLog({
+        emailId,
+        sender: email.from,
+        method: result.method,
+        status: status as 'confirmed' | 'pending',
+        url: result.url
+      })
+
+      return ok({ method: result.method, logId: log.id, status: status as 'confirmed' | 'pending' })
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Abmelden')
+    }
+  })
+
+  // === Unsubscribe Tracking Handlers ===
+
+  ipcMain.handle('unsubscribe:confirm', async (_e, logId: string) => {
+    try {
+      updateUnsubscribeStatus(logId, 'confirmed')
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Bestätigen')
+    }
+  })
+
+  ipcMain.handle('unsubscribe:list', async () => {
+    try {
+      return ok(listUnsubscribeLogs())
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Laden der Abmelde-Logs')
     }
   })
 
@@ -386,6 +496,35 @@ export function registerIpcHandlers(): void {
       return ok(models)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Laden der Modelle')
+    }
+  })
+
+  // === AI Assistant Handlers ===
+
+  ipcMain.handle('ai:assistant-analyze', async (_e, accountId?: string, mailbox?: string) => {
+    try {
+      const result = await analyzeUnreadEmails(accountId, mailbox)
+      return ok(result)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler bei der Postfach-Analyse')
+    }
+  })
+
+  ipcMain.handle('ai:assistant-analyze-email', async (_e, emailId: string) => {
+    try {
+      const result = await analyzeEmail(emailId)
+      return ok(result)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler bei der E-Mail-Analyse')
+    }
+  })
+
+  ipcMain.handle('ai:assistant-chat', async (_e, params: { messages: ChatMessage[]; accountId?: string; mailbox?: string; focusedEmailId?: string }) => {
+    try {
+      const result = await chatWithContext(params.messages, params.accountId, params.mailbox, params.focusedEmailId)
+      return ok(result)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim KI-Chat')
     }
   })
 }

@@ -65,6 +65,8 @@ export interface Email {
   date: string
   body: string
   bodyHtml: string | null
+  listUnsubscribe: string | null
+  listUnsubscribePost: string | null
   isRead: boolean
   categoryId: string | null
 }
@@ -89,6 +91,26 @@ export interface CategoryCreate {
   name: string
   color: string
   description: string
+}
+
+// === Unsubscribe Log ===
+
+export interface UnsubscribeLog {
+  id: string
+  emailId: string
+  sender: string
+  method: 'post' | 'browser'
+  status: 'confirmed' | 'pending' | 'failed'
+  url?: string
+  createdAt: string
+  confirmedAt?: string
+}
+
+// === Chat Message ===
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 // === Smart Reply ===
@@ -121,6 +143,7 @@ export interface ElectronAPI {
   accountTestConnection: (config: AccountCreate) => Promise<IpcResult<void>>
   // Mailbox methods
   mailboxList: (accountId: string) => Promise<IpcResult<Mailbox[]>>
+  mailboxCreate: (accountId: string, path: string) => Promise<IpcResult<void>>
   mailboxUnreadCounts: (accountId: string) => Promise<IpcResult<Record<string, number>>>
   // Email methods
   emailList: (accountId?: string, mailbox?: string) => Promise<IpcResult<Email[]>>
@@ -128,6 +151,8 @@ export interface ElectronAPI {
   emailMarkRead: (id: string) => Promise<IpcResult<void>>
   emailSend: (data: EmailSend) => Promise<IpcResult<void>>
   emailDelete: (id: string) => Promise<IpcResult<void>>
+  emailUnsubscribe: (emailId: string) => Promise<IpcResult<{ method: 'post' | 'browser'; logId: string; status: 'confirmed' | 'pending' }>>
+  emailMove: (emailId: string, targetMailbox: string) => Promise<IpcResult<void>>
   // Sync methods
   syncAccount: (accountId: string) => Promise<IpcResult<void>>
   syncAll: () => Promise<IpcResult<void>>
@@ -149,6 +174,9 @@ export interface ElectronAPI {
   emailAiSearch: (params: { query: string; accountId?: string; mailbox?: string }) => Promise<IpcResult<string[]>>
   // AI smart reply
   emailSmartReply: (emailId: string, language: string) => Promise<IpcResult<SmartReplyResult>>
+  // Unsubscribe tracking
+  unsubscribeConfirm: (logId: string) => Promise<IpcResult<void>>
+  unsubscribeList: () => Promise<IpcResult<UnsubscribeLog[]>>
   // Google OAuth
   googleLogin: () => Promise<IpcResult<void>>
   googleLogout: () => Promise<IpcResult<void>>
@@ -156,6 +184,10 @@ export interface ElectronAPI {
   // AI models
   aiDefaultModels: (provider: string) => Promise<IpcResult<{ id: string; name: string }[]>>
   aiListModels: (params: { provider: string; apiKey?: string }) => Promise<IpcResult<{ id: string; name: string }[]>>
+  // AI assistant
+  aiAssistantAnalyze: (accountId?: string, mailbox?: string) => Promise<IpcResult<string>>
+  aiAssistantAnalyzeEmail: (emailId: string) => Promise<IpcResult<string>>
+  aiAssistantChat: (params: { messages: ChatMessage[]; accountId?: string; mailbox?: string; focusedEmailId?: string }) => Promise<IpcResult<string>>
 }
 
 // === IPC Channel Types ===
@@ -175,6 +207,11 @@ export type IpcChannels =
   | 'email:mark-read'
   | 'email:send'
   | 'email:delete'
+  | 'email:unsubscribe'
+  | 'email:move'
+  | 'mailbox:create'
+  | 'unsubscribe:confirm'
+  | 'unsubscribe:list'
   | 'sync:account'
   | 'sync:all'
   | 'sync:status'
@@ -195,6 +232,9 @@ export type IpcChannels =
   | 'auth:google-status'
   | 'ai:default-models'
   | 'ai:list-models'
+  | 'ai:assistant-analyze'
+  | 'ai:assistant-analyze-email'
+  | 'ai:assistant-chat'
 
 // === Window augmentation ===
 

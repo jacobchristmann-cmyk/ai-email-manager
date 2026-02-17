@@ -15,6 +15,7 @@ const electronAPI: ElectronAPI = {
   // Mailbox methods
   mailboxList: (accountId) => ipcRenderer.invoke('mailbox:list', accountId),
 
+  mailboxCreate: (accountId, path) => ipcRenderer.invoke('mailbox:create', accountId, path),
   mailboxUnreadCounts: (accountId) => ipcRenderer.invoke('mailbox:unread-counts', accountId),
 
   // Email methods
@@ -23,6 +24,8 @@ const electronAPI: ElectronAPI = {
   emailMarkRead: (id) => ipcRenderer.invoke('email:mark-read', id),
   emailSend: (data) => ipcRenderer.invoke('email:send', data),
   emailDelete: (id) => ipcRenderer.invoke('email:delete', id),
+  emailUnsubscribe: (emailId) => ipcRenderer.invoke('email:unsubscribe', emailId),
+  emailMove: (emailId, targetMailbox) => ipcRenderer.invoke('email:move', emailId, targetMailbox),
 
   // Sync methods
   syncAccount: (accountId) => ipcRenderer.invoke('sync:account', accountId),
@@ -53,6 +56,10 @@ const electronAPI: ElectronAPI = {
   emailClassifyAll: () => ipcRenderer.invoke('email:classify-all'),
   emailSetCategory: (emailId, categoryId) => ipcRenderer.invoke('email:set-category', emailId, categoryId),
 
+  // Unsubscribe tracking
+  unsubscribeConfirm: (logId) => ipcRenderer.invoke('unsubscribe:confirm', logId),
+  unsubscribeList: () => ipcRenderer.invoke('unsubscribe:list'),
+
   // AI search
   emailAiSearch: (params) => ipcRenderer.invoke('email:ai-search', params),
 
@@ -66,7 +73,12 @@ const electronAPI: ElectronAPI = {
 
   // AI models
   aiDefaultModels: (provider) => ipcRenderer.invoke('ai:default-models', provider),
-  aiListModels: (params) => ipcRenderer.invoke('ai:list-models', params)
+  aiListModels: (params) => ipcRenderer.invoke('ai:list-models', params),
+
+  // AI assistant
+  aiAssistantAnalyze: (accountId?, mailbox?) => ipcRenderer.invoke('ai:assistant-analyze', accountId, mailbox),
+  aiAssistantAnalyzeEmail: (emailId) => ipcRenderer.invoke('ai:assistant-analyze-email', emailId),
+  aiAssistantChat: (params) => ipcRenderer.invoke('ai:assistant-chat', params)
 }
 
 if (process.contextIsolated) {
