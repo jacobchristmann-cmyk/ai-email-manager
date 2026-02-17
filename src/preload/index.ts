@@ -57,7 +57,7 @@ const electronAPI: ElectronAPI = {
   emailAiSearch: (params) => ipcRenderer.invoke('email:ai-search', params),
 
   // AI smart reply
-  emailSmartReply: (emailId) => ipcRenderer.invoke('email:smart-reply', emailId),
+  emailSmartReply: (emailId, language) => ipcRenderer.invoke('email:smart-reply', emailId, language),
 
   // Google OAuth
   googleLogin: () => ipcRenderer.invoke('auth:google-login'),

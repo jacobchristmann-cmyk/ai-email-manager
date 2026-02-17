@@ -2,12 +2,10 @@ import { getEmail } from '../db/emailDao'
 import { callAI } from './aiClient'
 import type { SmartReplyResult } from '../../shared/types'
 
-function buildPrompt(subject: string, from: string, body: string): string {
+function buildPrompt(subject: string, from: string, body: string, language: string): string {
   const snippet = body.replace(/\s+/g, ' ').slice(0, 1500)
 
-  return `You are an email reply assistant.
-
-Read the following email. Focus on the SUBJECT LINE and the FIRST PARAGRAPH to determine the language.
+  return `You are an email reply assistant. Write ALL replies in ${language}.
 
 --- EMAIL START ---
 From: ${from}
@@ -16,17 +14,13 @@ Subject: ${subject}
 ${snippet}
 --- EMAIL END ---
 
-Generate reply suggestions. You MUST first output the detected language in the "language" field, then write ALL replies in that exact language.
+Generate reply suggestions. Every single word of every reply MUST be in ${language}.
 
-- "language": The language of the email subject and first paragraph (e.g. "English", "German", "French")
-- "shortReplies": 3 short reply options (1-2 sentences each), covering agreement, follow-up question, and decline/postpone. Written in the detected language.
-- "fullReply": 1 detailed professional reply (3-5 sentences). Written in the detected language.
-
-If the subject is "Meeting tomorrow" → language is English → all replies in English.
-If the subject is "Treffen morgen" → language is German → all replies in German.
+- "shortReplies": 3 short reply options (1-2 sentences each), covering agreement, follow-up question, and decline/postpone.
+- "fullReply": 1 detailed professional reply (3-5 sentences).
 
 Respond with ONLY a JSON object, no other text:
-{"language": "...", "shortReplies": ["...", "...", "..."], "fullReply": "..."}`
+{"shortReplies": ["...", "...", "..."], "fullReply": "..."}`
 }
 
 function parseResponse(content: string): SmartReplyResult {
@@ -51,13 +45,13 @@ function parseResponse(content: string): SmartReplyResult {
   }
 }
 
-export async function generateSmartReplies(emailId: string): Promise<SmartReplyResult> {
+export async function generateSmartReplies(emailId: string, language: string): Promise<SmartReplyResult> {
   const email = getEmail(emailId)
   if (!email) {
     throw new Error('E-Mail nicht gefunden.')
   }
 
-  const prompt = buildPrompt(email.subject, email.from, email.body)
+  const prompt = buildPrompt(email.subject, email.from, email.body, language)
   const response = await callAI(prompt)
   return parseResponse(response)
 }

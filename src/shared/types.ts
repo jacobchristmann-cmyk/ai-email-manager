@@ -148,7 +148,7 @@ export interface ElectronAPI {
   // AI search
   emailAiSearch: (params: { query: string; accountId?: string; mailbox?: string }) => Promise<IpcResult<string[]>>
   // AI smart reply
-  emailSmartReply: (emailId: string) => Promise<IpcResult<SmartReplyResult>>
+  emailSmartReply: (emailId: string, language: string) => Promise<IpcResult<SmartReplyResult>>
   // Google OAuth
   googleLogin: () => Promise<IpcResult<void>>
   googleLogout: () => Promise<IpcResult<void>>

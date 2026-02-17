@@ -314,9 +314,9 @@ export function registerIpcHandlers(): void {
 
   // === AI Smart Reply Handler ===
 
-  ipcMain.handle('email:smart-reply', async (_e, emailId: string) => {
+  ipcMain.handle('email:smart-reply', async (_e, emailId: string, language: string) => {
     try {
-      const result = await generateSmartReplies(emailId)
+      const result = await generateSmartReplies(emailId, language)
       return ok(result)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler bei der KI-Antwortgenerierung')

@@ -20,6 +20,7 @@ export default function EmailDetail(): React.JSX.Element {
   const [smartReplies, setSmartReplies] = useState<SmartReplyResult | null>(null)
   const [isLoadingReplies, setIsLoadingReplies] = useState(false)
   const [replyError, setReplyError] = useState<string | null>(null)
+  const [replyLanguage, setReplyLanguage] = useState('Deutsch')
 
   // Sync local state when the selected email changes or store updates
   useEffect(() => {
@@ -69,7 +70,7 @@ export default function EmailDetail(): React.JSX.Element {
     setIsLoadingReplies(true)
     setReplyError(null)
     setSmartReplies(null)
-    const result = await window.electronAPI.emailSmartReply(email.id)
+    const result = await window.electronAPI.emailSmartReply(email.id, replyLanguage)
     if (result.success && result.data) {
       setSmartReplies(result.data)
     } else {
@@ -166,12 +167,22 @@ export default function EmailDetail(): React.JSX.Element {
       {/* Smart Reply */}
       <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
         {!smartReplies && !isLoadingReplies && (
-          <button
-            onClick={handleSmartReply}
-            className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
-          >
-            KI-Antwort
-          </button>
+          <div className="flex items-center gap-2">
+            <select
+              value={replyLanguage}
+              onChange={(e) => setReplyLanguage(e.target.value)}
+              className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-purple-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            >
+              <option value="Deutsch">Deutsch</option>
+              <option value="English">English</option>
+            </select>
+            <button
+              onClick={handleSmartReply}
+              className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
+            >
+              KI-Antwort
+            </button>
+          </div>
         )}
 
         {isLoadingReplies && (
