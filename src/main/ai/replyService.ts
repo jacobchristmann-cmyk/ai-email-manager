@@ -7,8 +7,7 @@ function buildPrompt(subject: string, from: string, body: string): string {
 
   return `You are an email reply assistant.
 
-Step 1: Read the following email and identify its language.
-Step 2: Generate all replies in EXACTLY that language. Do NOT translate. Do NOT use any other language.
+Read the following email. Focus on the SUBJECT LINE and the FIRST PARAGRAPH to determine the language.
 
 --- EMAIL START ---
 From: ${from}
@@ -17,12 +16,17 @@ Subject: ${subject}
 ${snippet}
 --- EMAIL END ---
 
-Step 3: Generate the following in the language identified in Step 1:
-- "shortReplies": 3 short reply options (1-2 sentences each), covering agreement, follow-up question, and decline/postpone.
-- "fullReply": 1 detailed professional reply (3-5 sentences).
+Generate reply suggestions. You MUST first output the detected language in the "language" field, then write ALL replies in that exact language.
+
+- "language": The language of the email subject and first paragraph (e.g. "English", "German", "French")
+- "shortReplies": 3 short reply options (1-2 sentences each), covering agreement, follow-up question, and decline/postpone. Written in the detected language.
+- "fullReply": 1 detailed professional reply (3-5 sentences). Written in the detected language.
+
+If the subject is "Meeting tomorrow" → language is English → all replies in English.
+If the subject is "Treffen morgen" → language is German → all replies in German.
 
 Respond with ONLY a JSON object, no other text:
-{"shortReplies": ["...", "...", "..."], "fullReply": "..."}`
+{"language": "...", "shortReplies": ["...", "...", "..."], "fullReply": "..."}`
 }
 
 function parseResponse(content: string): SmartReplyResult {
