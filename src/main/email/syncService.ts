@@ -1,7 +1,7 @@
 import { BrowserWindow, Notification } from 'electron'
 import { getAccount, getLastUidForMailbox, updateLastSyncForMailbox, listAccounts } from '../db/accountDao'
-import { insertEmails } from '../db/emailDao'
-import { fetchEmails, listMailboxes, testImapConnection } from './imapClient'
+import { insertEmails, getUnreadUidsForMailbox, markReadByIds } from '../db/emailDao'
+import { fetchEmails, fetchSeenUids, listMailboxes, testImapConnection } from './imapClient'
 import { testSmtpConnection } from './smtpClient'
 import type { AccountCreate, SyncStatus } from '../../shared/types'
 
@@ -51,7 +51,8 @@ export async function syncAccount(accountId: string): Promise<void> {
             to: e.to,
             date: e.date,
             body: e.body,
-            bodyHtml: e.bodyHtml
+            bodyHtml: e.bodyHtml,
+            isRead: e.isSeen
           }))
 
           const inserted = insertEmails(emails)
@@ -62,8 +63,21 @@ export async function syncAccount(accountId: string): Promise<void> {
         } else {
           updateLastSyncForMailbox(accountId, mb.path, lastUid)
         }
-      } catch {
-        // Some mailboxes may not be selectable, skip them
+
+        // Sync read/seen flags: mark locally unread emails as read if seen on server
+        const unreadLocal = getUnreadUidsForMailbox(accountId, mb.path)
+        if (unreadLocal.length > 0) {
+          const seenOnServer = await fetchSeenUids(imapConfig, mb.path)
+          const toMarkRead = unreadLocal
+            .filter((e) => seenOnServer.has(e.uid))
+            .map((e) => e.id)
+          console.log(`[sync] ${mb.path}: ${unreadLocal.length} lokal ungelesen, ${seenOnServer.size} auf Server gelesen, ${toMarkRead.length} zu aktualisieren`)
+          if (toMarkRead.length > 0) {
+            markReadByIds(toMarkRead)
+          }
+        }
+      } catch (err) {
+        console.error(`[sync] Fehler bei Mailbox ${mb.path}:`, err)
       }
     }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useCategoryStore } from '../stores/categoryStore'
 import type { Category } from '../../shared/types'
@@ -21,6 +21,18 @@ export default function Settings(): React.JSX.Element {
   const [syncInterval, setSyncInterval] = useState('0')
   const [theme, setTheme] = useState('light')
 
+  // Model list state
+  const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Google OAuth state
+  const [googleClientId, setGoogleClientId] = useState('')
+  const [googleClientSecret, setGoogleClientSecret] = useState('')
+  const [googleConnected, setGoogleConnected] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [googleError, setGoogleError] = useState('')
+
   // Category management
   const [newCatName, setNewCatName] = useState('')
   const [newCatColor, setNewCatColor] = useState('#6B7280')
@@ -38,7 +50,71 @@ export default function Settings(): React.JSX.Element {
     setAiModel(settings.aiModel || '')
     setSyncInterval(settings.syncInterval || '0')
     setTheme(settings.theme || 'light')
+    setGoogleClientId(settings.googleClientId || '')
+    setGoogleClientSecret(settings.googleClientSecret || '')
   }, [settings])
+
+  // Check Google connection status when provider is google
+  useEffect(() => {
+    if (aiProvider === 'google') {
+      window.electronAPI.googleStatus().then((res) => {
+        if (res.success && res.data) {
+          setGoogleConnected(res.data.isConnected)
+        }
+      })
+    }
+  }, [aiProvider])
+
+  // Load hardcoded defaults immediately, then try API in background
+  const loadDefaultModels = useCallback(async (provider: string) => {
+    const res = await window.electronAPI.aiDefaultModels(provider)
+    if (res.success && res.data) {
+      setAvailableModels(res.data)
+    }
+  }, [])
+
+  const refreshModelsFromApi = useCallback(async (provider: string, apiKey: string) => {
+    setModelsLoading(true)
+    const result = await window.electronAPI.aiListModels({
+      provider,
+      apiKey: provider !== 'google' ? apiKey : undefined
+    })
+    setModelsLoading(false)
+    if (result.success && result.data && result.data.length > 0) {
+      setAvailableModels(result.data)
+    }
+    // On failure: keep existing defaults — no error shown, defaults stay
+  }, [])
+
+  // When provider changes: immediately show defaults, then try API
+  useEffect(() => {
+    loadDefaultModels(aiProvider)
+
+    // Try API refresh with saved credentials
+    const key = settings.aiApiKey || ''
+    const hasKey = aiProvider !== 'google' && key.trim()
+    const hasGoogle = aiProvider === 'google' && !!(settings.googleAccessToken && settings.googleRefreshToken)
+    if (hasKey || hasGoogle) {
+      refreshModelsFromApi(aiProvider, key)
+    }
+
+    // Periodic refresh every 5 minutes
+    if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current)
+    refreshIntervalRef.current = setInterval(() => {
+      const s = useSettingsStore.getState().settings
+      const k = s.aiApiKey || ''
+      const hasK = aiProvider !== 'google' && k.trim()
+      const hasG = aiProvider === 'google' && !!(s.googleAccessToken && s.googleRefreshToken)
+      if (hasK || hasG) {
+        refreshModelsFromApi(aiProvider, k)
+      }
+    }, 5 * 60 * 1000)
+
+    return () => {
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiProvider, settings.aiApiKey, settings.googleAccessToken])
 
   const handleSave = async (): Promise<void> => {
     await saveSettings({
@@ -46,8 +122,29 @@ export default function Settings(): React.JSX.Element {
       aiApiKey,
       aiModel,
       syncInterval,
-      theme
+      theme,
+      googleClientId,
+      googleClientSecret
     })
+  }
+
+  const handleGoogleLogin = async (): Promise<void> => {
+    setGoogleLoading(true)
+    setGoogleError('')
+    // Save client ID/secret first so the backend can read them
+    await saveSettings({ googleClientId, googleClientSecret })
+    const result = await window.electronAPI.googleLogin()
+    setGoogleLoading(false)
+    if (result.success) {
+      setGoogleConnected(true)
+    } else {
+      setGoogleError(result.error || 'Anmeldung fehlgeschlagen')
+    }
+  }
+
+  const handleGoogleLogout = async (): Promise<void> => {
+    await window.electronAPI.googleLogout()
+    setGoogleConnected(false)
   }
 
   const handleAddCategory = async (): Promise<void> => {
@@ -120,29 +217,93 @@ export default function Settings(): React.JSX.Element {
               >
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
+                <option value="google">Google Gemini (OAuth)</option>
               </select>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">API-Schlüssel</label>
-              <input
-                type="password"
-                value={aiApiKey}
-                onChange={(e) => setAiApiKey(e.target.value)}
-                placeholder="sk-..."
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-              />
-            </div>
+
+            {aiProvider === 'google' ? (
+              <>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Google Client-ID</label>
+                  <input
+                    type="text"
+                    value={googleClientId}
+                    onChange={(e) => setGoogleClientId(e.target.value)}
+                    placeholder="xxx.apps.googleusercontent.com"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Google Client-Secret</label>
+                  <input
+                    type="password"
+                    value={googleClientSecret}
+                    onChange={(e) => setGoogleClientSecret(e.target.value)}
+                    placeholder="GOCSPX-..."
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                  />
+                </div>
+                <div>
+                  {googleConnected ? (
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                        <span className="h-2 w-2 rounded-full bg-green-500" />
+                        Verbunden
+                      </span>
+                      <button
+                        onClick={handleGoogleLogout}
+                        className="rounded-lg border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                      >
+                        Abmelden
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <button
+                        onClick={handleGoogleLogin}
+                        disabled={googleLoading || !googleClientId.trim() || !googleClientSecret.trim()}
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {googleLoading ? 'Anmeldung...' : 'Mit Google anmelden'}
+                      </button>
+                      {googleError && (
+                        <p className="text-sm text-red-600 dark:text-red-400">{googleError}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">API-Schlüssel</label>
+                <input
+                  type="password"
+                  value={aiApiKey}
+                  onChange={(e) => setAiApiKey(e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                />
+              </div>
+            )}
+
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Modell</label>
-              <input
-                type="text"
+              <select
                 value={aiModel}
                 onChange={(e) => setAiModel(e.target.value)}
-                placeholder={aiProvider === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-4-5-20250929'}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-              />
+              >
+                <option value="">
+                  Standard ({aiProvider === 'google' ? 'gemini-2.0-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-4-5-20250929'})
+                </option>
+                {availableModels.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name !== m.id ? `${m.name} (${m.id})` : m.id}
+                  </option>
+                ))}
+              </select>
               <p className="mt-1 text-xs text-gray-400">
-                Leer lassen für Standardmodell
+                {modelsLoading ? 'Aktualisiere Modellliste...' : 'Wird automatisch aktualisiert'}
               </p>
             </div>
           </div>

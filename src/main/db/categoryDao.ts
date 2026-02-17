@@ -91,3 +91,51 @@ export function updateEmailCategories(updates: Record<string, string>): void {
   })
   transaction()
 }
+
+// ── Training / Corrections ──
+
+export function addCategoryCorrection(
+  emailSubject: string,
+  emailFrom: string,
+  emailSnippet: string,
+  categoryId: string
+): void {
+  const db = getDb()
+  // Avoid duplicate entries for the same email content
+  db.prepare(
+    `INSERT INTO category_corrections (email_subject, email_from, email_snippet, category_id)
+     VALUES (?, ?, ?, ?)`
+  ).run(emailSubject, emailFrom, emailSnippet.slice(0, 300), categoryId)
+
+  // Keep max 200 corrections (oldest get deleted)
+  db.prepare(
+    `DELETE FROM category_corrections WHERE id NOT IN (
+       SELECT id FROM category_corrections ORDER BY created_at DESC LIMIT 200
+     )`
+  ).run()
+}
+
+export function listCategoryCorrections(): {
+  subject: string
+  from: string
+  snippet: string
+  categoryId: string
+}[] {
+  const db = getDb()
+  const rows = db
+    .prepare(
+      'SELECT email_subject, email_from, email_snippet, category_id FROM category_corrections ORDER BY created_at DESC LIMIT 50'
+    )
+    .all() as {
+    email_subject: string
+    email_from: string
+    email_snippet: string
+    category_id: string
+  }[]
+  return rows.map((r) => ({
+    subject: r.email_subject,
+    from: r.email_from,
+    snippet: r.email_snippet,
+    categoryId: r.category_id
+  }))
+}

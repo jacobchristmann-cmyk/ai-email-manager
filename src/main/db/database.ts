@@ -90,6 +90,18 @@ export function getDb(): Database.Database {
     )
   `)
 
+  // Training data: manual category corrections the AI should learn from
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS category_corrections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email_subject TEXT NOT NULL DEFAULT '',
+      email_from TEXT NOT NULL DEFAULT '',
+      email_snippet TEXT NOT NULL DEFAULT '',
+      category_id TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+
   // Migrate existing last_uid from accounts to mailbox_sync_state for INBOX
   db.exec(`
     INSERT OR IGNORE INTO mailbox_sync_state (account_id, mailbox, last_uid)

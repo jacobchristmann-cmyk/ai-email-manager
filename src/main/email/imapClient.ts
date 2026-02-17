@@ -18,6 +18,7 @@ export interface FetchedEmail {
   date: string
   body: string
   bodyHtml: string | null
+  isSeen: boolean
 }
 
 function createClient(config: ImapConfig): ImapFlow {
@@ -51,6 +52,33 @@ export async function listMailboxes(config: ImapConfig): Promise<Mailbox[]> {
   }
 }
 
+export async function fetchSeenUids(
+  config: ImapConfig,
+  mailbox: string = 'INBOX'
+): Promise<Set<number>> {
+  const client = createClient(config)
+  const seenUids = new Set<number>()
+
+  try {
+    await client.connect()
+    const lock = await client.getMailboxLock(mailbox)
+
+    try {
+      // Use IMAP SEARCH to find all messages with \Seen flag — much faster than fetching flags individually
+      const results = await client.search({ seen: true }, { uid: true })
+      for (const uid of results) {
+        seenUids.add(uid)
+      }
+    } finally {
+      lock.release()
+    }
+  } finally {
+    await client.logout().catch(() => {})
+  }
+
+  return seenUids
+}
+
 export async function fetchEmails(config: ImapConfig, sinceUid: number = 0, mailbox: string = 'INBOX'): Promise<FetchedEmail[]> {
   const client = createClient(config)
   const emails: FetchedEmail[] = []
@@ -78,7 +106,8 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0, mail
       const fetchOptions = {
         uid: sinceUid > 0,
         envelope: true,
-        source: true
+        source: true,
+        flags: true
       }
 
       for await (const msg of client.fetch(range, fetchOptions)) {
@@ -114,7 +143,8 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0, mail
           to,
           date: envelope.date ? envelope.date.toISOString() : new Date().toISOString(),
           body,
-          bodyHtml
+          bodyHtml,
+          isSeen: msg.flags?.has('\\Seen') ?? false
         })
       }
     } finally {

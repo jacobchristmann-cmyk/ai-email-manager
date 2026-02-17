@@ -170,22 +170,6 @@ export default function Sidebar(): React.JSX.Element {
           )
         })}
 
-        <div className="my-2 border-t border-gray-700" />
-
-        <NavLink
-          to="/accounts"
-          className={({ isActive }) => linkClass(isActive)}
-        >
-          <span>{'\u{1F464}'}</span>
-          <span>Accounts</span>
-        </NavLink>
-        <NavLink
-          to="/settings"
-          className={({ isActive }) => linkClass(isActive)}
-        >
-          <span>{'\u2699\uFE0F'}</span>
-          <span>Settings</span>
-        </NavLink>
       </nav>
       <div className="p-4 text-xs text-gray-500">v1.0.0</div>
     </aside>
