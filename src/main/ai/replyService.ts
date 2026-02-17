@@ -5,23 +5,24 @@ import type { SmartReplyResult } from '../../shared/types'
 function buildPrompt(subject: string, from: string, body: string): string {
   const snippet = body.replace(/\s+/g, ' ').slice(0, 1500)
 
-  return `You are an email reply assistant. Generate reply suggestions for the following email.
+  return `You are an email reply assistant.
 
-CRITICAL: Detect the language of the email below and write ALL replies in that SAME language. If the email is in English, reply in English. If in German, reply in German. If in French, reply in French. Etc.
+Step 1: Read the following email and identify its language.
+Step 2: Generate all replies in EXACTLY that language. Do NOT translate. Do NOT use any other language.
 
+--- EMAIL START ---
 From: ${from}
 Subject: ${subject}
-Content: ${snippet}
 
-Generate:
-1. Three short reply options (1-2 sentences each) covering typical reactions (e.g. agreement, follow-up question, decline/postpone).
-2. One detailed, professional reply (3-5 sentences).
+${snippet}
+--- EMAIL END ---
 
-ALL reply text MUST be in the same language as the email above.
+Step 3: Generate the following in the language identified in Step 1:
+- "shortReplies": 3 short reply options (1-2 sentences each), covering agreement, follow-up question, and decline/postpone.
+- "fullReply": 1 detailed professional reply (3-5 sentences).
 
-Respond ONLY with a JSON object in this exact format:
-{"shortReplies": ["Short reply 1", "Short reply 2", "Short reply 3"], "fullReply": "Detailed reply here..."}
-No explanations, only JSON.`
+Respond with ONLY a JSON object, no other text:
+{"shortReplies": ["...", "...", "..."], "fullReply": "..."}`
 }
 
 function parseResponse(content: string): SmartReplyResult {
