@@ -1,20 +1,7 @@
 import { create } from 'zustand'
 import type { Mailbox } from '../../shared/types'
 
-const STORAGE_KEY = 'mailbox-order'
-
-function loadOrderFromStorage(): Record<string, string[]> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : {}
-  } catch {
-    return {}
-  }
-}
-
-function saveOrderToStorage(order: Record<string, string[]>): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(order))
-}
+const SETTINGS_KEY = 'mailboxOrder'
 
 function getMailboxSortOrder(mailbox: Mailbox): number {
   switch (mailbox.specialUse) {
@@ -36,6 +23,7 @@ interface MailboxState {
   loadAllMailboxes: () => Promise<void>
   loadUnreadCounts: (accountId: string) => Promise<void>
   loadAllUnreadCounts: () => Promise<void>
+  loadMailboxOrder: () => Promise<void>
   reorderMailbox: (accountId: string, fromIndex: number, toIndex: number) => void
   getOrderedMailboxes: (accountId: string) => Mailbox[]
 }
@@ -43,8 +31,20 @@ interface MailboxState {
 export const useMailboxStore = create<MailboxState>((set, get) => ({
   mailboxes: {},
   unreadCounts: {},
-  mailboxOrder: loadOrderFromStorage(),
+  mailboxOrder: {},
   isLoading: false,
+
+  loadMailboxOrder: async () => {
+    const result = await window.electronAPI.settingsGet()
+    if (result.success && result.data && result.data[SETTINGS_KEY]) {
+      try {
+        const order = JSON.parse(result.data[SETTINGS_KEY]) as Record<string, string[]>
+        set({ mailboxOrder: order })
+      } catch {
+        // ignore invalid JSON
+      }
+    }
+  },
 
   loadMailboxes: async (accountId) => {
     const result = await window.electronAPI.mailboxList(accountId)
@@ -57,6 +57,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
 
   loadAllMailboxes: async () => {
     set({ isLoading: true })
+    await get().loadMailboxOrder()
     const accountsResult = await window.electronAPI.accountList()
     if (accountsResult.success && accountsResult.data) {
       for (const account of accountsResult.data) {
@@ -90,7 +91,8 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
     ordered.splice(toIndex, 0, moved)
     const newOrder = { ...get().mailboxOrder, [accountId]: ordered }
     set({ mailboxOrder: newOrder })
-    saveOrderToStorage(newOrder)
+    // Persist to DB via settings
+    window.electronAPI.settingsSet({ [SETTINGS_KEY]: JSON.stringify(newOrder) })
   },
 
   getOrderedMailboxes: (accountId) => {
@@ -108,7 +110,6 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
         byPath.delete(path)
       }
     }
-    // Append any new mailboxes not in saved order
     const remaining = [...byPath.values()].sort(
       (a, b) => getMailboxSortOrder(a) - getMailboxSortOrder(b)
     )

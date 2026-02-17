@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid'
 import { getDb } from './database'
-import type { Email } from '../../shared/types'
+import type { Email, UnsubscribeLog } from '../../shared/types'
 
 interface EmailRow {
   id: string
@@ -14,6 +14,8 @@ interface EmailRow {
   date: string
   body: string
   body_html: string | null
+  list_unsubscribe: string | null
+  list_unsubscribe_post: string | null
   is_read: number
   category_id: string | null
   created_at: string
@@ -32,6 +34,8 @@ function rowToEmail(row: EmailRow): Email {
     date: row.date,
     body: row.body,
     bodyHtml: row.body_html ?? null,
+    listUnsubscribe: row.list_unsubscribe ?? null,
+    listUnsubscribePost: row.list_unsubscribe_post ?? null,
     isRead: row.is_read === 1,
     categoryId: row.category_id
   }
@@ -48,6 +52,8 @@ export interface EmailInsert {
   date: string
   body: string
   bodyHtml?: string | null
+  listUnsubscribe?: string | null
+  listUnsubscribePost?: string | null
   isRead?: boolean
 }
 
@@ -56,9 +62,9 @@ export function insertEmail(data: EmailInsert): Email | null {
   const id = uuid()
   try {
     db.prepare(
-      `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, mailbox, subject, from_address, to_address, date, body, body_html, is_read)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, data.accountId, data.messageId, data.uid, data.mailbox, data.subject, data.from, data.to, data.date, data.body, data.bodyHtml ?? null, data.isRead ? 1 : 0)
+      `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, mailbox, subject, from_address, to_address, date, body, body_html, list_unsubscribe, list_unsubscribe_post, is_read)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, data.accountId, data.messageId, data.uid, data.mailbox, data.subject, data.from, data.to, data.date, data.body, data.bodyHtml ?? null, data.listUnsubscribe ?? null, data.listUnsubscribePost ?? null, data.isRead ? 1 : 0)
     const row = db.prepare('SELECT * FROM emails WHERE id = ?').get(id) as EmailRow | undefined
     return row ? rowToEmail(row) : null
   } catch {
@@ -69,13 +75,13 @@ export function insertEmail(data: EmailInsert): Email | null {
 export function insertEmails(emails: EmailInsert[]): number {
   const db = getDb()
   const stmt = db.prepare(
-    `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, mailbox, subject, from_address, to_address, date, body, body_html, is_read)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR IGNORE INTO emails (id, account_id, message_id, uid, mailbox, subject, from_address, to_address, date, body, body_html, list_unsubscribe, list_unsubscribe_post, is_read)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   let inserted = 0
   const transaction = db.transaction(() => {
     for (const e of emails) {
-      const result = stmt.run(uuid(), e.accountId, e.messageId, e.uid, e.mailbox, e.subject, e.from, e.to, e.date, e.body, e.bodyHtml ?? null, e.isRead ? 1 : 0)
+      const result = stmt.run(uuid(), e.accountId, e.messageId, e.uid, e.mailbox, e.subject, e.from, e.to, e.date, e.body, e.bodyHtml ?? null, e.listUnsubscribe ?? null, e.listUnsubscribePost ?? null, e.isRead ? 1 : 0)
       if (result.changes > 0) inserted++
     }
   })
@@ -97,6 +103,14 @@ export function listEmails(accountId?: string, mailbox?: string): Email[] {
   return rows.map(rowToEmail)
 }
 
+const EXCLUDED_MAILBOXES_PATTERN = /junk|spam|unerwünscht|unerwuenscht|trash|papierkorb/i
+
+export function listEmailsForAI(accountId?: string, mailbox?: string): Email[] {
+  return listEmails(accountId, mailbox).filter(
+    (e) => !EXCLUDED_MAILBOXES_PATTERN.test(e.mailbox)
+  )
+}
+
 export function getEmail(id: string): Email | undefined {
   const db = getDb()
   const row = db.prepare('SELECT * FROM emails WHERE id = ?').get(id) as EmailRow | undefined
@@ -106,6 +120,11 @@ export function getEmail(id: string): Email | undefined {
 export function markRead(id: string): void {
   const db = getDb()
   db.prepare('UPDATE emails SET is_read = 1 WHERE id = ?').run(id)
+}
+
+export function markUnread(id: string): void {
+  const db = getDb()
+  db.prepare('UPDATE emails SET is_read = 0 WHERE id = ?').run(id)
 }
 
 export function deleteEmail(id: string): void {
@@ -156,4 +175,71 @@ export function getUnreadCount(accountId?: string, mailbox?: string): number {
   }
   const row = db.prepare('SELECT COUNT(*) as count FROM emails WHERE is_read = 0').get() as { count: number }
   return row.count
+}
+
+// === Mailbox Update ===
+
+export function updateEmailMailbox(id: string, mailbox: string): void {
+  const db = getDb()
+  db.prepare('UPDATE emails SET mailbox = ? WHERE id = ?').run(mailbox, id)
+}
+
+// === Unsubscribe Log ===
+
+interface UnsubscribeLogRow {
+  id: string
+  email_id: string
+  sender: string
+  method: string
+  status: string
+  url: string | null
+  created_at: string
+  confirmed_at: string | null
+}
+
+function rowToUnsubscribeLog(row: UnsubscribeLogRow): UnsubscribeLog {
+  return {
+    id: row.id,
+    emailId: row.email_id,
+    sender: row.sender,
+    method: row.method as 'post' | 'browser',
+    status: row.status as 'confirmed' | 'pending' | 'failed',
+    url: row.url ?? undefined,
+    createdAt: row.created_at,
+    confirmedAt: row.confirmed_at ?? undefined
+  }
+}
+
+export function insertUnsubscribeLog(data: {
+  emailId: string
+  sender: string
+  method: 'post' | 'browser'
+  status: 'confirmed' | 'pending' | 'failed'
+  url?: string
+}): UnsubscribeLog {
+  const db = getDb()
+  const id = uuid()
+  db.prepare(
+    'INSERT INTO unsubscribe_log (id, email_id, sender, method, status, url) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(id, data.emailId, data.sender, data.method, data.status, data.url ?? null)
+  const row = db.prepare('SELECT * FROM unsubscribe_log WHERE id = ?').get(id) as UnsubscribeLogRow
+  return rowToUnsubscribeLog(row)
+}
+
+export function updateUnsubscribeStatus(id: string, status: 'confirmed' | 'pending' | 'failed'): void {
+  const db = getDb()
+  const confirmedAt = status === 'confirmed' ? new Date().toISOString() : null
+  db.prepare('UPDATE unsubscribe_log SET status = ?, confirmed_at = ? WHERE id = ?').run(status, confirmedAt, id)
+}
+
+export function listUnsubscribeLogs(): UnsubscribeLog[] {
+  const db = getDb()
+  const rows = db.prepare('SELECT * FROM unsubscribe_log ORDER BY created_at DESC').all() as UnsubscribeLogRow[]
+  return rows.map(rowToUnsubscribeLog)
+}
+
+export function getUnsubscribeLogByEmailId(emailId: string): UnsubscribeLog | undefined {
+  const db = getDb()
+  const row = db.prepare('SELECT * FROM unsubscribe_log WHERE email_id = ?').get(emailId) as UnsubscribeLogRow | undefined
+  return row ? rowToUnsubscribeLog(row) : undefined
 }

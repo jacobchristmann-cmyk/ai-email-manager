@@ -3,7 +3,7 @@ import {
   createAccount, listAccounts, getAccount, updateAccount, deleteAccount
 } from './db/accountDao'
 import {
-  listEmails, getEmail, markRead, deleteEmail, getUnreadCounts,
+  listEmails, getEmail, markRead, markUnread, deleteEmail, getUnreadCounts,
   updateEmailMailbox, insertUnsubscribeLog, updateUnsubscribeStatus, listUnsubscribeLogs
 } from './db/emailDao'
 import { listMailboxes, createMailbox, moveEmail } from './email/imapClient'
@@ -23,7 +23,7 @@ import { getDefaultModels, listModelsFromApi } from './ai/modelService'
 import { unsubscribe } from './ai/unsubscribeService'
 import { startGoogleOAuth } from './ai/googleOAuth'
 import { updateSchedulerInterval } from './email/syncScheduler'
-import { analyzeUnreadEmails, analyzeEmail, chatWithContext } from './ai/assistantService'
+import { analyzeUnreadEmails, analyzeEmail, chatWithContext, generateBriefing } from './ai/assistantService'
 import type { AccountCreate, CategoryCreate, ChatMessage, EmailSend, IpcResult } from '../shared/types'
 
 function ok<T>(data: T): IpcResult<T> {
@@ -159,6 +159,15 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('email:mark-read', async (_e, id: string) => {
     try {
       markRead(id)
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Markieren')
+    }
+  })
+
+  ipcMain.handle('email:mark-unread', async (_e, id: string) => {
+    try {
+      markUnread(id)
       return ok(undefined)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Markieren')
@@ -500,6 +509,15 @@ export function registerIpcHandlers(): void {
   })
 
   // === AI Assistant Handlers ===
+
+  ipcMain.handle('ai:assistant-briefing', async () => {
+    try {
+      const result = await generateBriefing()
+      return ok(result)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Erstellen des Briefings')
+    }
+  })
 
   ipcMain.handle('ai:assistant-analyze', async (_e, accountId?: string, mailbox?: string) => {
     try {

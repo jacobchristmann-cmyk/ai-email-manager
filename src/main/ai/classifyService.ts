@@ -1,4 +1,4 @@
-import { listEmails } from '../db/emailDao'
+import { listEmailsForAI } from '../db/emailDao'
 import { listCategories, updateEmailCategories, listCategoryCorrections } from '../db/categoryDao'
 import { callAI } from './aiClient'
 import type { Category, Email } from '../../shared/types'
@@ -83,7 +83,7 @@ export async function classifyEmails(emailIds: string[]): Promise<Record<string,
     throw new Error('Keine Kategorien vorhanden.')
   }
 
-  const allEmails = listEmails()
+  const allEmails = listEmailsForAI()
   const targetEmails = allEmails.filter((e) => emailIds.includes(e.id))
 
   if (targetEmails.length === 0) return {}
@@ -114,7 +114,7 @@ export async function classifyEmails(emailIds: string[]): Promise<Record<string,
 }
 
 export async function classifyAllEmails(): Promise<Record<string, string>> {
-  const allEmails = listEmails()
+  const allEmails = listEmailsForAI()
   const uncategorized = allEmails.filter((e) => !e.categoryId)
 
   if (uncategorized.length === 0) return {}

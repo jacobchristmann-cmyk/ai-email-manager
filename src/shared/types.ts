@@ -113,6 +113,24 @@ export interface ChatMessage {
   content: string
 }
 
+// === Briefing ===
+
+export interface BriefingItem {
+  emailId: string
+  subject: string
+  from: string
+  mailbox: string
+  category: 'important' | 'deadline' | 'newsletter' | 'other'
+  summary: string
+  deadline?: string
+}
+
+export interface Briefing {
+  totalUnread: number
+  items: BriefingItem[]
+  overview: string
+}
+
 // === Smart Reply ===
 
 export interface SmartReplyResult {
@@ -149,6 +167,7 @@ export interface ElectronAPI {
   emailList: (accountId?: string, mailbox?: string) => Promise<IpcResult<Email[]>>
   emailGet: (id: string) => Promise<IpcResult<Email>>
   emailMarkRead: (id: string) => Promise<IpcResult<void>>
+  emailMarkUnread: (id: string) => Promise<IpcResult<void>>
   emailSend: (data: EmailSend) => Promise<IpcResult<void>>
   emailDelete: (id: string) => Promise<IpcResult<void>>
   emailUnsubscribe: (emailId: string) => Promise<IpcResult<{ method: 'post' | 'browser'; logId: string; status: 'confirmed' | 'pending' }>>
@@ -188,6 +207,7 @@ export interface ElectronAPI {
   aiAssistantAnalyze: (accountId?: string, mailbox?: string) => Promise<IpcResult<string>>
   aiAssistantAnalyzeEmail: (emailId: string) => Promise<IpcResult<string>>
   aiAssistantChat: (params: { messages: ChatMessage[]; accountId?: string; mailbox?: string; focusedEmailId?: string }) => Promise<IpcResult<string>>
+  aiAssistantBriefing: () => Promise<IpcResult<Briefing>>
 }
 
 // === IPC Channel Types ===
@@ -205,6 +225,7 @@ export type IpcChannels =
   | 'email:list'
   | 'email:get'
   | 'email:mark-read'
+  | 'email:mark-unread'
   | 'email:send'
   | 'email:delete'
   | 'email:unsubscribe'
@@ -235,6 +256,7 @@ export type IpcChannels =
   | 'ai:assistant-analyze'
   | 'ai:assistant-analyze-email'
   | 'ai:assistant-chat'
+  | 'ai:assistant-briefing'
 
 // === Window augmentation ===
 

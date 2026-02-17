@@ -14,7 +14,6 @@ interface ChatState {
   toggle: () => void
   open: () => void
   close: () => void
-  analyzeUnread: (accountId?: string, mailbox?: string) => Promise<void>
   analyzeEmail: (emailId: string, subject: string) => Promise<void>
   sendMessage: (text: string, accountId?: string, mailbox?: string) => Promise<void>
   clearChat: () => void
@@ -31,35 +30,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   focusedEmailSubject: null,
 
   toggle: () => {
-    const wasOpen = get().isOpen
-    set({ isOpen: !wasOpen })
-    if (!wasOpen) {
-      get().analyzeUnread()
-    }
+    set((s) => ({ isOpen: !s.isOpen }))
   },
 
   open: () => {
     set({ isOpen: true })
-    get().analyzeUnread()
   },
 
   close: () => set({ isOpen: false }),
-
-  analyzeUnread: async (accountId?: string, mailbox?: string) => {
-    set({ isAnalyzing: true, analysisError: null, focusedEmailId: null, focusedEmailSubject: null })
-    try {
-      const result = await window.electronAPI.aiAssistantAnalyze(accountId, mailbox)
-      if (result.success && result.data) {
-        set({ analysis: result.data })
-      } else {
-        set({ analysisError: result.error || 'Analyse fehlgeschlagen' })
-      }
-    } catch (err) {
-      set({ analysisError: err instanceof Error ? err.message : 'Analyse fehlgeschlagen' })
-    } finally {
-      set({ isAnalyzing: false })
-    }
-  },
 
   analyzeEmail: async (emailId: string, subject: string) => {
     set({

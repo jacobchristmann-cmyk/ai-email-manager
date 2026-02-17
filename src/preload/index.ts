@@ -22,6 +22,7 @@ const electronAPI: ElectronAPI = {
   emailList: (accountId?, mailbox?) => ipcRenderer.invoke('email:list', accountId, mailbox),
   emailGet: (id) => ipcRenderer.invoke('email:get', id),
   emailMarkRead: (id) => ipcRenderer.invoke('email:mark-read', id),
+  emailMarkUnread: (id) => ipcRenderer.invoke('email:mark-unread', id),
   emailSend: (data) => ipcRenderer.invoke('email:send', data),
   emailDelete: (id) => ipcRenderer.invoke('email:delete', id),
   emailUnsubscribe: (emailId) => ipcRenderer.invoke('email:unsubscribe', emailId),
@@ -78,7 +79,8 @@ const electronAPI: ElectronAPI = {
   // AI assistant
   aiAssistantAnalyze: (accountId?, mailbox?) => ipcRenderer.invoke('ai:assistant-analyze', accountId, mailbox),
   aiAssistantAnalyzeEmail: (emailId) => ipcRenderer.invoke('ai:assistant-analyze-email', emailId),
-  aiAssistantChat: (params) => ipcRenderer.invoke('ai:assistant-chat', params)
+  aiAssistantChat: (params) => ipcRenderer.invoke('ai:assistant-chat', params),
+  aiAssistantBriefing: () => ipcRenderer.invoke('ai:assistant-briefing')
 }
 
 if (process.contextIsolated) {

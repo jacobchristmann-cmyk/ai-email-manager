@@ -9,6 +9,7 @@ import SyncButton from '../components/SyncButton'
 import InboxToolbar from '../components/InboxToolbar'
 import ComposeModal from '../components/ComposeModal'
 import AiAssistant from '../components/AiAssistant'
+import InboxBriefing from '../components/InboxBriefing'
 
 export default function Inbox(): React.JSX.Element {
   const { loadEmails, handleSyncStatus, openCompose } = useEmailStore()
@@ -26,6 +27,9 @@ export default function Inbox(): React.JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
+      {/* Briefing (above header) */}
+      <InboxBriefing />
+
       {/* Top bar */}
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Inbox</h1>

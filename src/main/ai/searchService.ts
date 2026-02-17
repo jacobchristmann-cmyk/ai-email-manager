@@ -1,4 +1,4 @@
-import { listEmails } from '../db/emailDao'
+import { listEmailsForAI } from '../db/emailDao'
 import { callAI } from './aiClient'
 import type { Email } from '../../shared/types'
 
@@ -76,7 +76,7 @@ export async function aiSearchEmails(
 ): Promise<string[]> {
   if (!query.trim()) return []
 
-  const allEmails = listEmails(accountId, mailbox)
+  const allEmails = listEmailsForAI(accountId, mailbox)
   if (allEmails.length === 0) return []
 
   // Pre-filter to most relevant candidates to keep prompt small

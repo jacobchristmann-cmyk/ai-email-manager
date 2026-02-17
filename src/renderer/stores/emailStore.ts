@@ -26,6 +26,7 @@ interface EmailState {
   loadEmails: (accountId?: string, mailbox?: string) => Promise<void>
   selectEmail: (id: string | null) => Promise<void>
   markRead: (id: string) => void
+  markUnread: (id: string) => void
   deleteEmail: (id: string) => Promise<void>
   setEmailCategory: (emailId: string, categoryId: string | null) => Promise<void>
   syncAccount: (accountId: string) => Promise<void>
@@ -42,6 +43,7 @@ interface EmailState {
   aiSearch: (query: string) => Promise<void>
   clearAiSearch: () => void
   // Compose
+  moveEmail: (emailId: string, targetMailbox: string) => Promise<boolean>
   openCompose: (prefill?: Partial<EmailSend>) => void
   closeCompose: () => void
   sendEmail: (data: EmailSend) => Promise<boolean>
@@ -99,6 +101,14 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     set((state) => ({
       emails: state.emails.map((e) => (e.id === id ? { ...e, isRead: true } : e)),
       unreadCount: Math.max(0, state.unreadCount - 1)
+    }))
+  },
+
+  markUnread: (id) => {
+    window.electronAPI.emailMarkUnread(id)
+    set((state) => ({
+      emails: state.emails.map((e) => (e.id === id ? { ...e, isRead: false } : e)),
+      unreadCount: state.unreadCount + 1
     }))
   },
 
@@ -228,6 +238,23 @@ export const useEmailStore = create<EmailState>((set, get) => ({
 
   clearAiSearch: () => {
     set({ aiSearchResults: null, aiSearchError: null })
+  },
+
+  moveEmail: async (emailId, targetMailbox) => {
+    const result = await window.electronAPI.emailMove(emailId, targetMailbox)
+    if (result.success) {
+      set((state) => {
+        const email = state.emails.find((e) => e.id === emailId)
+        const wasUnread = email && !email.isRead
+        return {
+          emails: state.emails.filter((e) => e.id !== emailId),
+          selectedEmailId: state.selectedEmailId === emailId ? null : state.selectedEmailId,
+          unreadCount: wasUnread ? Math.max(0, state.unreadCount - 1) : state.unreadCount
+        }
+      })
+      return true
+    }
+    return false
   },
 
   // Compose
