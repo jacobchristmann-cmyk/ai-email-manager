@@ -56,6 +56,9 @@ const electronAPI: ElectronAPI = {
   // AI search
   emailAiSearch: (params) => ipcRenderer.invoke('email:ai-search', params),
 
+  // AI smart reply
+  emailSmartReply: (emailId) => ipcRenderer.invoke('email:smart-reply', emailId),
+
   // Google OAuth
   googleLogin: () => ipcRenderer.invoke('auth:google-login'),
   googleLogout: () => ipcRenderer.invoke('auth:google-logout'),

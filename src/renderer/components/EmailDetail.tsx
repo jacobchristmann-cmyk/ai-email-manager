@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useEmailStore } from '../stores/emailStore'
 import { useCategoryStore } from '../stores/categoryStore'
+import type { SmartReplyResult } from '../../shared/types'
 
 export default function EmailDetail(): React.JSX.Element {
   const selectedEmailId = useEmailStore((s) => s.selectedEmailId)
@@ -15,10 +16,21 @@ export default function EmailDetail(): React.JSX.Element {
   // Local state for the category dropdown to ensure immediate UI feedback
   const [localCategoryId, setLocalCategoryId] = useState<string | null>(email?.categoryId ?? null)
 
+  // Smart reply state
+  const [smartReplies, setSmartReplies] = useState<SmartReplyResult | null>(null)
+  const [isLoadingReplies, setIsLoadingReplies] = useState(false)
+  const [replyError, setReplyError] = useState<string | null>(null)
+
   // Sync local state when the selected email changes or store updates
   useEffect(() => {
     setLocalCategoryId(email?.categoryId ?? null)
   }, [email?.categoryId, selectedEmailId])
+
+  // Reset smart replies when email changes
+  useEffect(() => {
+    setSmartReplies(null)
+    setReplyError(null)
+  }, [selectedEmailId])
 
   if (!email) {
     return (
@@ -47,6 +59,32 @@ export default function EmailDetail(): React.JSX.Element {
     openCompose({
       accountId: email.accountId,
       to: fromEmail || fromName,
+      subject: email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`,
+      body: quotedBody
+    })
+  }
+
+  const handleSmartReply = async (): Promise<void> => {
+    if (!email) return
+    setIsLoadingReplies(true)
+    setReplyError(null)
+    setSmartReplies(null)
+    const result = await window.electronAPI.emailSmartReply(email.id)
+    if (result.success && result.data) {
+      setSmartReplies(result.data)
+    } else {
+      setReplyError(result.error ?? 'Fehler bei der KI-Antwortgenerierung')
+    }
+    setIsLoadingReplies(false)
+  }
+
+  const handleUseReply = (replyBody: string): void => {
+    if (!email) return
+    const fromEmail = email.from.match(/<([^>]+)>/)?.[1] || email.from.replace(/<[^>]+>/, '').trim()
+    const quotedBody = `${replyBody}\n\n--- Ursprüngliche Nachricht ---\nVon: ${email.from}\nDatum: ${date}\nBetreff: ${email.subject}\n\n${email.body}`
+    openCompose({
+      accountId: email.accountId,
+      to: fromEmail,
       subject: email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`,
       body: quotedBody
     })
@@ -123,6 +161,54 @@ export default function EmailDetail(): React.JSX.Element {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Smart Reply */}
+      <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+        {!smartReplies && !isLoadingReplies && (
+          <button
+            onClick={handleSmartReply}
+            className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
+          >
+            KI-Antwort
+          </button>
+        )}
+
+        {isLoadingReplies && (
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            KI generiert Antwortvorschläge…
+          </div>
+        )}
+
+        {replyError && (
+          <div className="text-sm text-red-500">{replyError}</div>
+        )}
+
+        {smartReplies && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {smartReplies.shortReplies.map((reply, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleUseReply(reply)}
+                  className="rounded-full border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm text-purple-700 hover:bg-purple-100 dark:border-purple-600 dark:bg-purple-900/30 dark:text-purple-300 dark:hover:bg-purple-900/50"
+                >
+                  {reply}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => handleUseReply(smartReplies.fullReply)}
+              className="rounded-lg border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm text-purple-700 hover:bg-purple-100 dark:border-purple-600 dark:bg-purple-900/30 dark:text-purple-300 dark:hover:bg-purple-900/50"
+            >
+              Ausführliche Antwort verwenden
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Body */}

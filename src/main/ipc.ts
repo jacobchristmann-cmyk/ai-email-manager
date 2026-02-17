@@ -17,6 +17,7 @@ import { syncAccount, syncAllAccounts, testConnection } from './email/syncServic
 import { sendEmail } from './email/smtpClient'
 import { classifyEmails, classifyAllEmails } from './ai/classifyService'
 import { aiSearchEmails } from './ai/searchService'
+import { generateSmartReplies } from './ai/replyService'
 import { getDefaultModels, listModelsFromApi } from './ai/modelService'
 import { startGoogleOAuth } from './ai/googleOAuth'
 import { updateSchedulerInterval } from './email/syncScheduler'
@@ -308,6 +309,17 @@ export function registerIpcHandlers(): void {
       return ok(results)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler bei der KI-Suche')
+    }
+  })
+
+  // === AI Smart Reply Handler ===
+
+  ipcMain.handle('email:smart-reply', async (_e, emailId: string) => {
+    try {
+      const result = await generateSmartReplies(emailId)
+      return ok(result)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler bei der KI-Antwortgenerierung')
     }
   })
 

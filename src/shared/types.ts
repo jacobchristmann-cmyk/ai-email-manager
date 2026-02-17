@@ -91,6 +91,13 @@ export interface CategoryCreate {
   description: string
 }
 
+// === Smart Reply ===
+
+export interface SmartReplyResult {
+  shortReplies: string[]
+  fullReply: string
+}
+
 // === Settings ===
 
 export interface AppSettings {
@@ -140,6 +147,8 @@ export interface ElectronAPI {
   emailSetCategory: (emailId: string, categoryId: string | null) => Promise<IpcResult<void>>
   // AI search
   emailAiSearch: (params: { query: string; accountId?: string; mailbox?: string }) => Promise<IpcResult<string[]>>
+  // AI smart reply
+  emailSmartReply: (emailId: string) => Promise<IpcResult<SmartReplyResult>>
   // Google OAuth
   googleLogin: () => Promise<IpcResult<void>>
   googleLogout: () => Promise<IpcResult<void>>
@@ -180,6 +189,7 @@ export type IpcChannels =
   | 'email:classify-all'
   | 'email:set-category'
   | 'email:ai-search'
+  | 'email:smart-reply'
   | 'auth:google-login'
   | 'auth:google-logout'
   | 'auth:google-status'
