@@ -33,6 +33,20 @@ export default function App(): React.JSX.Element {
     }
   }, [settings.theme])
 
+  useEffect(() => {
+    const fontSizeMap: Record<string, string> = { small: '14px', medium: '16px', large: '18px' }
+    const fontFamilyMap: Record<string, string> = {
+      system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      'sans-serif': "'Helvetica Neue', Arial, sans-serif",
+      serif: "Georgia, 'Times New Roman', serif",
+      monospace: "'SF Mono', Consolas, 'Courier New', monospace"
+    }
+    const el = document.documentElement
+    el.style.fontSize = fontSizeMap[settings.fontSize || 'medium'] ?? '16px'
+    el.style.setProperty('--app-font-family', fontFamilyMap[settings.fontFamily || 'system'] ?? fontFamilyMap.system)
+    el.style.setProperty('--sidebar-bg', settings.sidebarColor || '#111827')
+  }, [settings.fontSize, settings.fontFamily, settings.sidebarColor])
+
   const topLinkClass = (isActive: boolean): string =>
     `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors ${
       isActive

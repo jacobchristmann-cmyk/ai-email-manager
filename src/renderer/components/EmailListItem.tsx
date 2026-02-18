@@ -4,6 +4,7 @@ import { useCategoryStore } from '../stores/categoryStore'
 import { useChatStore } from '../stores/chatStore'
 import { useEmailStore } from '../stores/emailStore'
 import { useMailboxStore } from '../stores/mailboxStore'
+import { useSettingsStore } from '../stores/settingsStore'
 
 interface EmailListItemProps {
   email: Email
@@ -21,6 +22,8 @@ export default function EmailListItem({
   const analyzeEmail = useChatStore((s) => s.analyzeEmail)
   const { markRead, markUnread, deleteEmail, moveEmail } = useEmailStore()
   const mailboxes = useMailboxStore((s) => s.mailboxes)
+  const emailDensity = useSettingsStore((s) => s.settings.emailDensity || 'comfortable')
+  const densityPy = emailDensity === 'compact' ? 'py-1.5' : emailDensity === 'spacious' ? 'py-5' : 'py-3'
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showMoveSubmenu, setShowMoveSubmenu] = useState(false)
@@ -94,7 +97,7 @@ export default function EmailListItem({
       <button
         onClick={onClick}
         onContextMenu={handleContextMenu}
-        className={`w-full border-b border-gray-100 px-4 py-3 text-left transition-colors dark:border-gray-700 ${
+        className={`w-full border-b border-gray-100 px-4 text-left transition-colors dark:border-gray-700 ${densityPy} ${
           isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
         }`}
       >

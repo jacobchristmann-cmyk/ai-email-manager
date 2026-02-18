@@ -20,6 +20,10 @@ export default function Settings(): React.JSX.Element {
   const [aiModel, setAiModel] = useState('')
   const [syncInterval, setSyncInterval] = useState('0')
   const [theme, setTheme] = useState('light')
+  const [fontSize, setFontSize] = useState('medium')
+  const [fontFamily, setFontFamily] = useState('system')
+  const [sidebarColor, setSidebarColor] = useState('#111827')
+  const [emailDensity, setEmailDensity] = useState('comfortable')
 
   // Model list state
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([])
@@ -50,6 +54,10 @@ export default function Settings(): React.JSX.Element {
     setAiModel(settings.aiModel || '')
     setSyncInterval(settings.syncInterval || '0')
     setTheme(settings.theme || 'light')
+    setFontSize(settings.fontSize || 'medium')
+    setFontFamily(settings.fontFamily || 'system')
+    setSidebarColor(settings.sidebarColor || '#111827')
+    setEmailDensity(settings.emailDensity || 'comfortable')
     setGoogleClientId(settings.googleClientId || '')
     setGoogleClientSecret(settings.googleClientSecret || '')
   }, [settings])
@@ -123,6 +131,10 @@ export default function Settings(): React.JSX.Element {
       aiModel,
       syncInterval,
       theme,
+      fontSize,
+      fontFamily,
+      sidebarColor,
+      emailDensity,
       googleClientId,
       googleClientSecret
     })
@@ -333,16 +345,139 @@ export default function Settings(): React.JSX.Element {
         {/* Section 3: Appearance */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
           <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-gray-100">Darstellung</h2>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Theme</label>
-            <select
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-            >
-              <option value="light">Hell</option>
-              <option value="dark">Dunkel</option>
-            </select>
+          <div className="space-y-5">
+
+            {/* Theme */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Theme</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'light', label: 'Hell', icon: '\u2600\uFE0F' },
+                  { value: 'dark', label: 'Dunkel', icon: '\uD83C\uDF19' }
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setTheme(opt.value)}
+                    className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-colors ${
+                      theme === opt.value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <span>{opt.icon}</span>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Font size */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Schriftgröße</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'small', label: 'Klein', preview: 'A', size: 'text-xs' },
+                  { value: 'medium', label: 'Mittel', preview: 'A', size: 'text-sm' },
+                  { value: 'large', label: 'Groß', preview: 'A', size: 'text-base' }
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setFontSize(opt.value)}
+                    className={`flex flex-col items-center gap-1 rounded-lg border px-4 py-2 transition-colors ${
+                      fontSize === opt.value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <span className={`font-bold ${opt.size}`}>{opt.preview}</span>
+                    <span className="text-xs">{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Font family */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Schriftart</label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: 'system', label: 'System', style: { fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" } },
+                  { value: 'sans-serif', label: 'Sans-serif', style: { fontFamily: "'Helvetica Neue', Arial, sans-serif" } },
+                  { value: 'serif', label: 'Serif', style: { fontFamily: "Georgia, 'Times New Roman', serif" } },
+                  { value: 'monospace', label: 'Monospace', style: { fontFamily: "'SF Mono', Consolas, 'Courier New', monospace" } }
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setFontFamily(opt.value)}
+                    style={opt.style}
+                    className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
+                      fontFamily === opt.value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sidebar color */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Sidebar-Farbe</label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: '#111827', label: 'Dunkelgrau' },
+                  { value: '#1e2d3d', label: 'Schieferblau' },
+                  { value: '#1a2e1a', label: 'Waldgrün' },
+                  { value: '#2d1e3d', label: 'Dunkelviolett' },
+                  { value: '#2d1e1e', label: 'Dunkelrot' },
+                  { value: '#1c1c1e', label: 'Schwarz' }
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSidebarColor(opt.value)}
+                    title={opt.label}
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 transition-all ${
+                      sidebarColor === opt.value
+                        ? 'border-blue-500 scale-110 shadow-md'
+                        : 'border-transparent hover:border-gray-400'
+                    }`}
+                    style={{ background: opt.value }}
+                  >
+                    {sidebarColor === opt.value && (
+                      <span className="text-xs font-bold text-white">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-gray-400">Wird sofort nach dem Speichern angewendet</p>
+            </div>
+
+            {/* Email density */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">E-Mail-Dichte</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'compact', label: 'Kompakt' },
+                  { value: 'comfortable', label: 'Komfortabel' },
+                  { value: 'spacious', label: 'Geräumig' }
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setEmailDensity(opt.value)}
+                    className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
+                      emailDensity === opt.value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
           </div>
         </div>
 
