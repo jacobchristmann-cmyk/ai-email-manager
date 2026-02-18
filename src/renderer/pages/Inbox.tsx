@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import { useEmailStore } from '../stores/emailStore'
 import { useAccountStore } from '../stores/accountStore'
 import { useCategoryStore } from '../stores/categoryStore'
@@ -48,18 +49,30 @@ export default function Inbox(): React.JSX.Element {
       <InboxToolbar />
 
       {/* Split view */}
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-        {/* Email list - 40% */}
-        <div className="w-2/5 border-r border-gray-200 dark:border-gray-700">
+      <PanelGroup
+        direction="horizontal"
+        autoSaveId="inbox-panels"
+        className="min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+      >
+        <Panel defaultSize={35} minSize={20} maxSize={60}>
           <EmailList />
-        </div>
-        {/* Email detail */}
-        <div className="flex-1">
+        </Panel>
+
+        <PanelResizeHandle className="w-1.5 cursor-col-resize bg-gray-200 transition-colors hover:bg-blue-400 dark:bg-gray-700 dark:hover:bg-blue-500" />
+
+        <Panel defaultSize={65} minSize={25}>
           <EmailDetail />
-        </div>
-        {/* AI Assistant panel */}
-        {isAssistantOpen && <AiAssistant />}
-      </div>
+        </Panel>
+
+        {isAssistantOpen && (
+          <>
+            <PanelResizeHandle className="w-1.5 cursor-col-resize bg-gray-200 transition-colors hover:bg-blue-400 dark:bg-gray-700 dark:hover:bg-blue-500" />
+            <Panel defaultSize={25} minSize={15} maxSize={45}>
+              <AiAssistant />
+            </Panel>
+          </>
+        )}
+      </PanelGroup>
 
       {/* Compose modal */}
       <ComposeModal />

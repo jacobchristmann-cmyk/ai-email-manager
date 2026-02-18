@@ -58,7 +58,7 @@ export default function AiAssistant(): React.JSX.Element {
   const hasContent = focusedEmailSubject || analysis || messages.length > 0
 
   return (
-    <div className="flex h-full w-96 flex-col border-l border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+    <div className="flex h-full w-full flex-col border-l border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
         <h2 className="text-sm font-semibold">KI-Assistent</h2>

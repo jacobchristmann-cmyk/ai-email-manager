@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import Sidebar from './components/Sidebar'
 import Inbox from './pages/Inbox'
 import Accounts from './pages/Accounts'
@@ -40,32 +41,43 @@ export default function App(): React.JSX.Element {
     }`
 
   return (
-    <div className="flex h-screen bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-end gap-2 border-b border-gray-200 px-6 py-2 dark:border-gray-700">
-          <NavLink to="/statistics" className={({ isActive }) => topLinkClass(isActive)}>
-            <span className="text-sm">{'\u{1F4CA}'}</span>
-            <span>Statistik</span>
-          </NavLink>
-          <NavLink to="/accounts" className={({ isActive }) => topLinkClass(isActive)}>
-            <span className="text-sm">{'\u{1F464}'}</span>
-            <span>Accounts</span>
-          </NavLink>
-          <NavLink to="/settings" className={({ isActive }) => topLinkClass(isActive)}>
-            <span className="text-sm">{'\u2699\uFE0F'}</span>
-            <span>Settings</span>
-          </NavLink>
-        </header>
-        <main className="flex-1 overflow-auto p-6">
-          <Routes>
-            <Route path="/" element={<Inbox />} />
-            <Route path="/statistics" element={<Statistics />} />
-            <Route path="/accounts" element={<Accounts />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </main>
-      </div>
-    </div>
+    <PanelGroup
+      direction="horizontal"
+      autoSaveId="app-layout"
+      className="h-screen bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100"
+    >
+      <Panel defaultSize={17} minSize={10} maxSize={30}>
+        <Sidebar />
+      </Panel>
+
+      <PanelResizeHandle className="group relative w-1.5 cursor-col-resize bg-gray-200 transition-colors hover:bg-blue-400 dark:bg-gray-700 dark:hover:bg-blue-500" />
+
+      <Panel>
+        <div className="flex h-full flex-col overflow-hidden">
+          <header className="flex items-center justify-end gap-2 border-b border-gray-200 px-6 py-2 dark:border-gray-700">
+            <NavLink to="/statistics" className={({ isActive }) => topLinkClass(isActive)}>
+              <span className="text-sm">{'\u{1F4CA}'}</span>
+              <span>Statistik</span>
+            </NavLink>
+            <NavLink to="/accounts" className={({ isActive }) => topLinkClass(isActive)}>
+              <span className="text-sm">{'\u{1F464}'}</span>
+              <span>Accounts</span>
+            </NavLink>
+            <NavLink to="/settings" className={({ isActive }) => topLinkClass(isActive)}>
+              <span className="text-sm">{'\u2699\uFE0F'}</span>
+              <span>Settings</span>
+            </NavLink>
+          </header>
+          <main className="flex-1 overflow-auto p-6">
+            <Routes>
+              <Route path="/" element={<Inbox />} />
+              <Route path="/statistics" element={<Statistics />} />
+              <Route path="/accounts" element={<Accounts />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </main>
+        </div>
+      </Panel>
+    </PanelGroup>
   )
 }

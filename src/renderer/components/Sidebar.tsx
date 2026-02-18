@@ -147,7 +147,7 @@ export default function Sidebar(): React.JSX.Element {
     }`
 
   return (
-    <aside className="flex w-56 flex-col bg-gray-900 text-white">
+    <aside className="flex h-full flex-col bg-gray-900 text-white">
       <div className="p-4 text-lg font-bold tracking-tight">{appName}</div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-2">
         {accounts.map((account) => {
