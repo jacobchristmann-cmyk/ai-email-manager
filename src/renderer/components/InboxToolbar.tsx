@@ -22,12 +22,21 @@ export default function InboxToolbar(): React.JSX.Element {
     clearAiSearch,
     isAiSearching,
     aiSearchResults,
-    aiSearchError
+    aiSearchError,
+    isAdvancedSearchOpen,
+    toggleAdvancedSearch,
+    advancedSearchFilters,
+    setAdvancedSearchFilters,
+    executeAdvancedSearch,
+    clearAdvancedSearch,
+    isAdvancedSearchActive,
+    searchResultCount
   } = useEmailStore()
 
   const [localSearch, setLocalSearch] = useState(searchQuery)
   const [classifyResult, setClassifyResult] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const advancedDebounceRef = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
     if (aiSearchMode) return // No debounce in AI mode
@@ -36,6 +45,23 @@ export default function InboxToolbar(): React.JSX.Element {
     }, 300)
     return () => clearTimeout(debounceRef.current)
   }, [localSearch, setSearchQuery, aiSearchMode])
+
+  // Live advanced search: debounce filter changes and auto-execute
+  useEffect(() => {
+    if (!isAdvancedSearchOpen) return
+    const hasAnyFilter = advancedSearchFilters.from || advancedSearchFilters.to ||
+      advancedSearchFilters.subject || advancedSearchFilters.dateFrom ||
+      advancedSearchFilters.dateTo || advancedSearchFilters.isRead !== undefined ||
+      advancedSearchFilters.categoryId
+    if (!hasAnyFilter) {
+      if (isAdvancedSearchActive) clearAdvancedSearch()
+      return
+    }
+    advancedDebounceRef.current = setTimeout(() => {
+      executeAdvancedSearch()
+    }, 400)
+    return () => clearTimeout(advancedDebounceRef.current)
+  }, [advancedSearchFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClassify = async (): Promise<void> => {
     setClassifyResult(null)
@@ -154,6 +180,21 @@ export default function InboxToolbar(): React.JSX.Element {
           )}
         </div>
 
+        {/* Advanced filter toggle */}
+        <button
+          onClick={toggleAdvancedSearch}
+          title={isAdvancedSearchOpen ? 'Filter ausblenden' : 'Erweiterte Filter'}
+          className={`rounded-lg px-2 py-1.5 text-xs font-bold transition-colors ${
+            isAdvancedSearchActive
+              ? 'bg-blue-600 text-white'
+              : isAdvancedSearchOpen
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500'
+          }`}
+        >
+          Filter
+        </button>
+
         {/* AI Classify button */}
         <button
           onClick={handleClassify}
@@ -175,6 +216,105 @@ export default function InboxToolbar(): React.JSX.Element {
           KI-Assistent
         </button>
       </div>
+
+      {/* Advanced search filters */}
+      {isAdvancedSearchOpen && (
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-800">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 dark:text-gray-400">Von</label>
+            <input
+              type="text"
+              placeholder="Absender..."
+              value={advancedSearchFilters.from ?? ''}
+              onChange={(e) => setAdvancedSearchFilters({ from: e.target.value || undefined })}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 dark:text-gray-400">An</label>
+            <input
+              type="text"
+              placeholder="Empfänger..."
+              value={advancedSearchFilters.to ?? ''}
+              onChange={(e) => setAdvancedSearchFilters({ to: e.target.value || undefined })}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 dark:text-gray-400">Betreff</label>
+            <input
+              type="text"
+              placeholder="Betreff..."
+              value={advancedSearchFilters.subject ?? ''}
+              onChange={(e) => setAdvancedSearchFilters({ subject: e.target.value || undefined })}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 dark:text-gray-400">Kategorie</label>
+            <select
+              value={advancedSearchFilters.categoryId ?? ''}
+              onChange={(e) => setAdvancedSearchFilters({ categoryId: e.target.value || undefined })}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            >
+              <option value="">Alle</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 dark:text-gray-400">Datum von</label>
+            <input
+              type="date"
+              value={advancedSearchFilters.dateFrom ?? ''}
+              onChange={(e) => setAdvancedSearchFilters({ dateFrom: e.target.value || undefined })}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 dark:text-gray-400">Datum bis</label>
+            <input
+              type="date"
+              value={advancedSearchFilters.dateTo ?? ''}
+              onChange={(e) => setAdvancedSearchFilters({ dateTo: e.target.value || undefined })}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 dark:text-gray-400">Status</label>
+            <select
+              value={advancedSearchFilters.isRead === undefined ? '' : advancedSearchFilters.isRead ? 'read' : 'unread'}
+              onChange={(e) => {
+                const val = e.target.value
+                setAdvancedSearchFilters({
+                  isRead: val === '' ? undefined : val === 'read'
+                })
+              }}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            >
+              <option value="">Alle</option>
+              <option value="read">Gelesen</option>
+              <option value="unread">Ungelesen</option>
+            </select>
+          </div>
+          {isAdvancedSearchActive && (
+            <button
+              onClick={clearAdvancedSearch}
+              className="rounded-lg bg-gray-200 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
+            >
+              Zurücksetzen
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Advanced search result count */}
+      {isAdvancedSearchActive && searchResultCount !== null && (
+        <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+          {searchResultCount} Ergebnis(se) gefunden
+        </div>
+      )}
 
       {/* AI search feedback */}
       {aiSearchMode && isAiSearching && (

@@ -12,6 +12,11 @@ export interface SyncStatus {
   accountId: string
   status: 'syncing' | 'done' | 'error'
   message: string
+  progress?: {
+    current: number
+    total: number
+    mailbox: string
+  }
 }
 
 // === Account ===
@@ -69,6 +74,20 @@ export interface Email {
   listUnsubscribePost: string | null
   isRead: boolean
   categoryId: string | null
+}
+
+export interface EmailSearchParams {
+  query?: string
+  from?: string
+  to?: string
+  subject?: string
+  dateFrom?: string
+  dateTo?: string
+  isRead?: boolean
+  categoryId?: string
+  accountId?: string
+  mailbox?: string
+  limit?: number
 }
 
 export interface EmailSend {
@@ -171,10 +190,13 @@ export interface ElectronAPI {
   emailSend: (data: EmailSend) => Promise<IpcResult<void>>
   emailDelete: (id: string) => Promise<IpcResult<void>>
   emailUnsubscribe: (emailId: string) => Promise<IpcResult<{ method: 'post' | 'browser'; logId: string; status: 'confirmed' | 'pending' }>>
+  emailSearch: (params: EmailSearchParams) => Promise<IpcResult<Email[]>>
+  emailMarkAllRead: (accountId: string, mailbox: string) => Promise<IpcResult<number>>
   emailMove: (emailId: string, targetMailbox: string) => Promise<IpcResult<void>>
   // Sync methods
   syncAccount: (accountId: string) => Promise<IpcResult<void>>
   syncAll: () => Promise<IpcResult<void>>
+  syncFullResync: (accountId: string) => Promise<IpcResult<void>>
   onSyncStatus: (callback: (status: SyncStatus) => void) => () => void
   // Settings methods
   settingsGet: () => Promise<IpcResult<Record<string, string>>>
@@ -229,12 +251,15 @@ export type IpcChannels =
   | 'email:send'
   | 'email:delete'
   | 'email:unsubscribe'
+  | 'email:search'
+  | 'email:mark-all-read'
   | 'email:move'
   | 'mailbox:create'
   | 'unsubscribe:confirm'
   | 'unsubscribe:list'
   | 'sync:account'
   | 'sync:all'
+  | 'sync:full-resync'
   | 'sync:status'
   | 'settings:get'
   | 'settings:set'

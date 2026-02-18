@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Email, EmailSend, SyncStatus } from '../../shared/types'
+import type { Email, EmailSearchParams, EmailSend, SyncStatus } from '../../shared/types'
 
 interface EmailState {
   emails: Email[]
@@ -7,12 +7,18 @@ interface EmailState {
   isLoading: boolean
   isSyncing: boolean
   syncMessage: string | null
+  syncProgress: { current: number; total: number; mailbox: string } | null
   unreadCount: number
   // Filter & search
   selectedAccountId: string | null
   selectedMailbox: string | null
   searchQuery: string
   selectedCategoryId: string | null
+  // Advanced search
+  isAdvancedSearchOpen: boolean
+  advancedSearchFilters: EmailSearchParams
+  isAdvancedSearchActive: boolean
+  searchResultCount: number | null
   // AI search
   aiSearchMode: boolean
   aiSearchResults: string[] | null
@@ -27,10 +33,12 @@ interface EmailState {
   selectEmail: (id: string | null) => Promise<void>
   markRead: (id: string) => void
   markUnread: (id: string) => void
+  markAllReadInMailbox: (accountId: string, mailbox: string) => Promise<void>
   deleteEmail: (id: string) => Promise<void>
   setEmailCategory: (emailId: string, categoryId: string | null) => Promise<void>
   syncAccount: (accountId: string) => Promise<void>
   syncAll: () => Promise<void>
+  fullResync: (accountId: string) => Promise<void>
   handleSyncStatus: (status: SyncStatus) => void
   // Filter & search
   setSelectedAccountId: (id: string | null) => void
@@ -38,6 +46,11 @@ interface EmailState {
   setSearchQuery: (query: string) => void
   setSelectedCategoryId: (id: string | null) => void
   filteredEmails: () => Email[]
+  // Advanced search
+  toggleAdvancedSearch: () => void
+  setAdvancedSearchFilters: (filters: Partial<EmailSearchParams>) => void
+  executeAdvancedSearch: () => Promise<void>
+  clearAdvancedSearch: () => void
   // AI search
   setAiSearchMode: (enabled: boolean) => void
   aiSearch: (query: string) => Promise<void>
@@ -55,11 +68,16 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   isLoading: false,
   isSyncing: false,
   syncMessage: null,
+  syncProgress: null,
   unreadCount: 0,
   selectedAccountId: null,
   selectedMailbox: null,
   searchQuery: '',
   selectedCategoryId: null,
+  isAdvancedSearchOpen: false,
+  advancedSearchFilters: {},
+  isAdvancedSearchActive: false,
+  searchResultCount: null,
   aiSearchMode: false,
   aiSearchResults: null,
   isAiSearching: false,
@@ -87,11 +105,20 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     if (id) {
       const email = get().emails.find((e) => e.id === id)
       if (email && !email.isRead) {
-        await window.electronAPI.emailMarkRead(id)
+        window.electronAPI.emailMarkRead(id)
         set((state) => ({
           emails: state.emails.map((e) => (e.id === id ? { ...e, isRead: true } : e)),
           unreadCount: Math.max(0, state.unreadCount - 1)
         }))
+      }
+      // Lazy-load body if not yet fetched
+      if (email && !email.body) {
+        const result = await window.electronAPI.emailGet(id)
+        if (result.success && result.data && get().selectedEmailId === id) {
+          set((state) => ({
+            emails: state.emails.map((e) => (e.id === id ? { ...e, ...result.data! } : e))
+          }))
+        }
       }
     }
   },
@@ -109,6 +136,22 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     set((state) => ({
       emails: state.emails.map((e) => (e.id === id ? { ...e, isRead: false } : e)),
       unreadCount: state.unreadCount + 1
+    }))
+  },
+
+  markAllReadInMailbox: async (accountId, mailbox) => {
+    await window.electronAPI.emailMarkAllRead(accountId, mailbox)
+    set((state) => ({
+      emails: state.emails.map((e) =>
+        e.accountId === accountId && e.mailbox === mailbox ? { ...e, isRead: true } : e
+      ),
+      unreadCount: state.emails.filter(
+        (e) => e.accountId === accountId && e.mailbox === mailbox && !e.isRead
+      ).length > 0
+        ? Math.max(0, state.unreadCount - state.emails.filter(
+            (e) => e.accountId === accountId && e.mailbox === mailbox && !e.isRead
+          ).length)
+        : state.unreadCount
     }))
   },
 
@@ -153,11 +196,16 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     await window.electronAPI.syncAll()
   },
 
+  fullResync: async (accountId) => {
+    set({ isSyncing: true, syncMessage: 'Vollständiger Sync läuft...' })
+    await window.electronAPI.syncFullResync(accountId)
+  },
+
   handleSyncStatus: (status) => {
     if (status.status === 'syncing') {
-      set({ isSyncing: true, syncMessage: status.message })
+      set({ isSyncing: true, syncMessage: status.message, syncProgress: status.progress ?? null })
     } else {
-      set({ isSyncing: false, syncMessage: status.message })
+      set({ isSyncing: false, syncMessage: status.message, syncProgress: null })
       // Reload emails after sync completes, respecting account + mailbox filter
       const accountId = get().selectedAccountId ?? undefined
       const mailbox = get().selectedMailbox ?? undefined
@@ -213,6 +261,53 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     }
 
     return filtered
+  },
+
+  // Advanced search
+  toggleAdvancedSearch: () => {
+    set((state) => ({ isAdvancedSearchOpen: !state.isAdvancedSearchOpen }))
+  },
+
+  setAdvancedSearchFilters: (filters) => {
+    set((state) => ({
+      advancedSearchFilters: { ...state.advancedSearchFilters, ...filters }
+    }))
+  },
+
+  executeAdvancedSearch: async () => {
+    const { advancedSearchFilters, selectedAccountId, selectedMailbox } = get()
+    const params: EmailSearchParams = {
+      ...advancedSearchFilters,
+      accountId: advancedSearchFilters.accountId ?? selectedAccountId ?? undefined,
+      mailbox: advancedSearchFilters.mailbox ?? selectedMailbox ?? undefined
+    }
+    set({ isLoading: true })
+    const result = await window.electronAPI.emailSearch(params)
+    if (result.success) {
+      const emails = result.data!
+      set({
+        emails,
+        unreadCount: emails.filter((e) => !e.isRead).length,
+        isLoading: false,
+        isAdvancedSearchActive: true,
+        searchResultCount: emails.length,
+        selectedEmailId: null
+      })
+    } else {
+      set({ isLoading: false })
+    }
+  },
+
+  clearAdvancedSearch: () => {
+    set({
+      advancedSearchFilters: {},
+      isAdvancedSearchActive: false,
+      searchResultCount: null,
+      selectedEmailId: null
+    })
+    const accountId = get().selectedAccountId ?? undefined
+    const mailbox = get().selectedMailbox ?? undefined
+    get().loadEmails(accountId, mailbox)
   },
 
   // AI search

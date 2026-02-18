@@ -20,7 +20,9 @@ const electronAPI: ElectronAPI = {
 
   // Email methods
   emailList: (accountId?, mailbox?) => ipcRenderer.invoke('email:list', accountId, mailbox),
+  emailSearch: (params) => ipcRenderer.invoke('email:search', params),
   emailGet: (id) => ipcRenderer.invoke('email:get', id),
+  emailMarkAllRead: (accountId, mailbox) => ipcRenderer.invoke('email:mark-all-read', accountId, mailbox),
   emailMarkRead: (id) => ipcRenderer.invoke('email:mark-read', id),
   emailMarkUnread: (id) => ipcRenderer.invoke('email:mark-unread', id),
   emailSend: (data) => ipcRenderer.invoke('email:send', data),
@@ -31,6 +33,7 @@ const electronAPI: ElectronAPI = {
   // Sync methods
   syncAccount: (accountId) => ipcRenderer.invoke('sync:account', accountId),
   syncAll: () => ipcRenderer.invoke('sync:all'),
+  syncFullResync: (accountId) => ipcRenderer.invoke('sync:full-resync', accountId),
   onSyncStatus: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, status: unknown): void => {
       callback(status as Parameters<typeof callback>[0])

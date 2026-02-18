@@ -1,5 +1,5 @@
 import { BrowserWindow, Notification } from 'electron'
-import { getAccount, getLastUidForMailbox, updateLastSyncForMailbox, listAccounts } from '../db/accountDao'
+import { getAccount, getLastUidForMailbox, updateLastSyncForMailbox, listAccounts, resetMailboxSyncState } from '../db/accountDao'
 import { insertEmails, getUnreadUidsForMailbox, markReadByIds } from '../db/emailDao'
 import { fetchEmails, fetchSeenUids, listMailboxes, testImapConnection } from './imapClient'
 import { testSmtpConnection } from './smtpClient'
@@ -33,12 +33,24 @@ export async function syncAccount(accountId: string): Promise<void> {
     const mailboxes = await listMailboxes(imapConfig)
     let totalInserted = 0
 
-    for (const mb of mailboxes) {
-      // Skip non-selectable mailboxes (like folder containers)
+    const totalMailboxes = mailboxes.length
+    console.log(`[sync] ${account.name}: ${totalMailboxes} Mailboxen gefunden`)
+
+    for (let i = 0; i < mailboxes.length; i++) {
+      const mb = mailboxes[i]
       const lastUid = getLastUidForMailbox(accountId, mb.path)
+      console.log(`[sync] ${mb.path}: lastUid=${lastUid}`)
+
+      broadcastSyncStatus({
+        accountId,
+        status: 'syncing',
+        message: `${mb.path} (${i + 1}/${totalMailboxes})`,
+        progress: { current: i + 1, total: totalMailboxes, mailbox: mb.path }
+      })
 
       try {
         const fetched = await fetchEmails(imapConfig, lastUid, mb.path)
+        console.log(`[sync] ${mb.path}: ${fetched.length} neue Emails abgerufen`)
 
         if (fetched.length > 0) {
           const emails = fetched.map((e) => ({
@@ -52,6 +64,8 @@ export async function syncAccount(accountId: string): Promise<void> {
             date: e.date,
             body: e.body,
             bodyHtml: e.bodyHtml,
+            listUnsubscribe: e.listUnsubscribe,
+            listUnsubscribePost: e.listUnsubscribePost,
             isRead: e.isSeen
           }))
 
@@ -119,6 +133,13 @@ export async function syncAllAccounts(): Promise<void> {
       // Error already broadcast via syncAccount
     }
   }
+}
+
+export async function fullResyncAccount(accountId: string): Promise<void> {
+  // Reset all mailbox sync states so the next sync fetches everything
+  resetMailboxSyncState(accountId)
+  console.log(`[sync] Full resync triggered for ${accountId} — all lastUid reset to 0`)
+  await syncAccount(accountId)
 }
 
 export async function testConnection(config: AccountCreate): Promise<void> {

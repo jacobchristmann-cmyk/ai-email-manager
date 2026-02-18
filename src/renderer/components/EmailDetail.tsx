@@ -9,12 +9,20 @@ export default function EmailDetail(): React.JSX.Element {
   const openCompose = useEmailStore((s) => s.openCompose)
   const deleteEmail = useEmailStore((s) => s.deleteEmail)
   const setEmailCategory = useEmailStore((s) => s.setEmailCategory)
+  const loadEmails = useEmailStore((s) => s.loadEmails)
   const categories = useCategoryStore((s) => s.categories)
 
   const email = selectedEmailId ? emails.find((e) => e.id === selectedEmailId) : undefined
 
   // Local state for the category dropdown to ensure immediate UI feedback
   const [localCategoryId, setLocalCategoryId] = useState<string | null>(email?.categoryId ?? null)
+
+  // Unsubscribe state
+  const [isUnsubscribing, setIsUnsubscribing] = useState(false)
+  const [unsubscribeResult, setUnsubscribeResult] = useState<'post' | 'browser' | null>(null)
+  const [unsubscribeError, setUnsubscribeError] = useState<string | null>(null)
+  const [unsubscribeLogId, setUnsubscribeLogId] = useState<string | null>(null)
+  const [unsubscribeConfirmed, setUnsubscribeConfirmed] = useState(false)
 
   // Smart reply state
   const [smartReplies, setSmartReplies] = useState<SmartReplyResult | null>(null)
@@ -27,10 +35,14 @@ export default function EmailDetail(): React.JSX.Element {
     setLocalCategoryId(email?.categoryId ?? null)
   }, [email?.categoryId, selectedEmailId])
 
-  // Reset smart replies when email changes
+  // Reset smart replies and unsubscribe state when email changes
   useEffect(() => {
     setSmartReplies(null)
     setReplyError(null)
+    setUnsubscribeResult(null)
+    setUnsubscribeError(null)
+    setUnsubscribeLogId(null)
+    setUnsubscribeConfirmed(false)
   }, [selectedEmailId])
 
   if (!email) {
@@ -111,6 +123,65 @@ export default function EmailDetail(): React.JSX.Element {
         <div className="flex items-start justify-between gap-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{email.subject}</h2>
           <div className="flex shrink-0 gap-2">
+            {email.categoryId === 'cat-newsletter' && (
+              <>
+                <button
+                  onClick={async () => {
+                    setIsUnsubscribing(true)
+                    setUnsubscribeError(null)
+                    setUnsubscribeResult(null)
+                    const result = await window.electronAPI.emailUnsubscribe(email.id)
+                    if (result.success && result.data) {
+                      setUnsubscribeResult(result.data.method)
+                      setUnsubscribeLogId(result.data.logId)
+                      if (result.data.status === 'confirmed') {
+                        setUnsubscribeConfirmed(true)
+                      }
+                      // Reload emails since the email was moved
+                      loadEmails()
+                    } else {
+                      setUnsubscribeError(result.error ?? 'Kein Abmelde-Link gefunden')
+                    }
+                    setIsUnsubscribing(false)
+                  }}
+                  disabled={isUnsubscribing || unsubscribeResult !== null}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium text-white ${
+                    unsubscribeResult
+                      ? 'bg-green-600'
+                      : unsubscribeError
+                        ? 'bg-red-500 hover:bg-red-600'
+                        : 'bg-orange-500 hover:bg-orange-600'
+                  } disabled:opacity-60`}
+                  title={unsubscribeError || undefined}
+                >
+                  {isUnsubscribing
+                    ? 'Wird abgemeldet…'
+                    : unsubscribeResult === 'post'
+                      ? 'Abgemeldet ✓'
+                      : unsubscribeResult === 'browser'
+                        ? 'Link geöffnet'
+                        : unsubscribeError
+                          ? 'Kein Link gefunden'
+                          : 'Abmelden'}
+                </button>
+                {unsubscribeResult === 'browser' && unsubscribeLogId && !unsubscribeConfirmed && (
+                  <button
+                    onClick={async () => {
+                      await window.electronAPI.unsubscribeConfirm(unsubscribeLogId)
+                      setUnsubscribeConfirmed(true)
+                    }}
+                    className="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+                  >
+                    Abmeldung bestätigen
+                  </button>
+                )}
+                {unsubscribeConfirmed && unsubscribeResult === 'browser' && (
+                  <span className="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white">
+                    Bestätigt
+                  </span>
+                )}
+              </>
+            )}
             <button
               onClick={handleReply}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
@@ -224,7 +295,15 @@ export default function EmailDetail(): React.JSX.Element {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4">
-        {iframeSrcDoc ? (
+        {!email.body && !email.bodyHtml ? (
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Inhalt wird geladen...
+          </div>
+        ) : iframeSrcDoc ? (
           <iframe
             srcDoc={iframeSrcDoc}
             sandbox=""

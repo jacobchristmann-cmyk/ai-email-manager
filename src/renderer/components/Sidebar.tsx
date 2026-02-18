@@ -6,6 +6,13 @@ import { useAccountStore } from '../stores/accountStore'
 import { useMailboxStore } from '../stores/mailboxStore'
 import type { Mailbox } from '../../shared/types'
 
+interface ContextMenuState {
+  x: number
+  y: number
+  accountId: string
+  mailboxPath: string
+}
+
 function getMailboxIcon(mailbox: Mailbox): string {
   switch (mailbox.specialUse) {
     case '\\Inbox': return '\u{1F4E5}'
@@ -26,6 +33,7 @@ export default function Sidebar(): React.JSX.Element {
   const accounts = useAccountStore((s) => s.accounts)
   const loadAccounts = useAccountStore((s) => s.loadAccounts)
   const mailboxes = useMailboxStore((s) => s.mailboxes)
+  const markAllReadInMailbox = useEmailStore((s) => s.markAllReadInMailbox)
   const loadAllMailboxes = useMailboxStore((s) => s.loadAllMailboxes)
   const unreadCounts = useMailboxStore((s) => s.unreadCounts)
   const loadAllUnreadCounts = useMailboxStore((s) => s.loadAllUnreadCounts)
@@ -34,6 +42,7 @@ export default function Sidebar(): React.JSX.Element {
   const navigate = useNavigate()
 
   const [expandedAccounts, setExpandedAccounts] = useState<Record<string, boolean>>({})
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
   // Drag state
   const [dragAccountId, setDragAccountId] = useState<string | null>(null)
@@ -104,6 +113,26 @@ export default function Sidebar(): React.JSX.Element {
     setDropIndex(null)
   }
 
+  const handleContextMenu = (e: React.MouseEvent, accountId: string, mailboxPath: string): void => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, accountId, mailboxPath })
+  }
+
+  const handleMarkAllRead = async (): Promise<void> => {
+    if (!contextMenu) return
+    await markAllReadInMailbox(contextMenu.accountId, contextMenu.mailboxPath)
+    useMailboxStore.getState().loadUnreadCounts(contextMenu.accountId)
+    setContextMenu(null)
+  }
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = (): void => setContextMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [contextMenu])
+
   const handleDragEnd = (): void => {
     setDragAccountId(null)
     setDragIndex(null)
@@ -148,6 +177,7 @@ export default function Sidebar(): React.JSX.Element {
                         onDrop={() => handleDrop(account.id, idx)}
                         onDragEnd={handleDragEnd}
                         onClick={() => handleMailboxClick(account.id, mb.path)}
+                        onContextMenu={(e) => handleContextMenu(e, account.id, mb.path)}
                         className={
                           linkClass(isActive) + ' w-full' +
                           (isDragging ? ' opacity-40' : '') +
@@ -172,6 +202,21 @@ export default function Sidebar(): React.JSX.Element {
 
       </nav>
       <div className="p-4 text-xs text-gray-500">v1.0.0</div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[180px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            onClick={handleMarkAllRead}
+            className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-700"
+          >
+            Alle als gelesen markieren
+          </button>
+        </div>
+      )}
     </aside>
   )
 }

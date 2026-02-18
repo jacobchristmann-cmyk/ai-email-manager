@@ -7,6 +7,14 @@ export function startScheduler(): void {
   const raw = getSetting('syncInterval')
   const minutes = raw ? parseInt(raw, 10) : 0
   setTimer(minutes)
+
+  // Auto-sync on startup after a short delay so the window is ready to receive status updates
+  setTimeout(() => {
+    console.log('[scheduler] Auto-sync on startup...')
+    syncAllAccounts().catch((err) => {
+      console.error('[scheduler] Auto-sync failed:', err)
+    })
+  }, 2000)
 }
 
 export function updateSchedulerInterval(minutes: number): void {

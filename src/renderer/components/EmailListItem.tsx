@@ -32,7 +32,7 @@ export default function EmailListItem({
     ? date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
     : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
 
-  const snippet = email.body.replace(/\s+/g, ' ').slice(0, 100)
+  const snippet = email.body ? email.body.replace(/\s+/g, ' ').slice(0, 100) : ''
 
   const handleContextMenu = (e: React.MouseEvent): void => {
     e.preventDefault()

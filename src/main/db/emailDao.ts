@@ -91,15 +91,16 @@ export function insertEmails(emails: EmailInsert[]): number {
 
 export function listEmails(accountId?: string, mailbox?: string): Email[] {
   const db = getDb()
+  const limit = 500
   if (accountId && mailbox) {
-    const rows = db.prepare('SELECT * FROM emails WHERE account_id = ? AND mailbox = ? ORDER BY date DESC').all(accountId, mailbox) as EmailRow[]
+    const rows = db.prepare('SELECT * FROM emails WHERE account_id = ? AND mailbox = ? ORDER BY date DESC LIMIT ?').all(accountId, mailbox, limit) as EmailRow[]
     return rows.map(rowToEmail)
   }
   if (accountId) {
-    const rows = db.prepare('SELECT * FROM emails WHERE account_id = ? ORDER BY date DESC').all(accountId) as EmailRow[]
+    const rows = db.prepare('SELECT * FROM emails WHERE account_id = ? ORDER BY date DESC LIMIT ?').all(accountId, limit) as EmailRow[]
     return rows.map(rowToEmail)
   }
-  const rows = db.prepare('SELECT * FROM emails ORDER BY date DESC').all() as EmailRow[]
+  const rows = db.prepare('SELECT * FROM emails ORDER BY date DESC LIMIT ?').all(limit) as EmailRow[]
   return rows.map(rowToEmail)
 }
 
@@ -115,6 +116,12 @@ export function getEmail(id: string): Email | undefined {
   const db = getDb()
   const row = db.prepare('SELECT * FROM emails WHERE id = ?').get(id) as EmailRow | undefined
   return row ? rowToEmail(row) : undefined
+}
+
+export function updateEmailBody(id: string, body: string, bodyHtml: string | null, listUnsubscribe: string | null, listUnsubscribePost: string | null): void {
+  const db = getDb()
+  db.prepare('UPDATE emails SET body = ?, body_html = ?, list_unsubscribe = ?, list_unsubscribe_post = ? WHERE id = ?')
+    .run(body, bodyHtml, listUnsubscribe, listUnsubscribePost, id)
 }
 
 export function markRead(id: string): void {
@@ -163,6 +170,78 @@ export function getUnreadCounts(accountId: string): Record<string, number> {
   return result
 }
 
+// === Search ===
+
+export interface EmailSearchParams {
+  query?: string
+  from?: string
+  to?: string
+  subject?: string
+  dateFrom?: string
+  dateTo?: string
+  isRead?: boolean
+  categoryId?: string
+  accountId?: string
+  mailbox?: string
+  limit?: number
+}
+
+export function searchEmails(params: EmailSearchParams): Email[] {
+  const db = getDb()
+  const conditions: string[] = []
+  const values: unknown[] = []
+
+  if (params.accountId) {
+    conditions.push('account_id = ?')
+    values.push(params.accountId)
+  }
+  if (params.mailbox) {
+    conditions.push('mailbox = ?')
+    values.push(params.mailbox)
+  }
+  if (params.from) {
+    conditions.push('from_address LIKE ?')
+    values.push(`%${params.from}%`)
+  }
+  if (params.to) {
+    conditions.push('to_address LIKE ?')
+    values.push(`%${params.to}%`)
+  }
+  if (params.subject) {
+    conditions.push('subject LIKE ?')
+    values.push(`%${params.subject}%`)
+  }
+  if (params.categoryId) {
+    conditions.push('category_id = ?')
+    values.push(params.categoryId)
+  }
+  if (params.query) {
+    conditions.push('(subject LIKE ? OR from_address LIKE ? OR body LIKE ?)')
+    const q = `%${params.query}%`
+    values.push(q, q, q)
+  }
+  if (params.dateFrom) {
+    conditions.push('date >= ?')
+    values.push(params.dateFrom)
+  }
+  if (params.dateTo) {
+    conditions.push('date <= ?')
+    values.push(params.dateTo + 'T23:59:59.999Z')
+  }
+  if (params.isRead !== undefined) {
+    conditions.push('is_read = ?')
+    values.push(params.isRead ? 1 : 0)
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  const limit = params.limit ?? 100
+  const sql = `SELECT * FROM emails ${where} ORDER BY date DESC LIMIT ?`
+  values.push(limit)
+
+  const rows = db.prepare(sql).all(...values) as EmailRow[]
+  return rows.map(rowToEmail)
+}
+
 export function getUnreadCount(accountId?: string, mailbox?: string): number {
   const db = getDb()
   if (accountId && mailbox) {
@@ -175,6 +254,12 @@ export function getUnreadCount(accountId?: string, mailbox?: string): number {
   }
   const row = db.prepare('SELECT COUNT(*) as count FROM emails WHERE is_read = 0').get() as { count: number }
   return row.count
+}
+
+export function markAllReadInMailbox(accountId: string, mailbox: string): number {
+  const db = getDb()
+  const result = db.prepare('UPDATE emails SET is_read = 1 WHERE account_id = ? AND mailbox = ? AND is_read = 0').run(accountId, mailbox)
+  return result.changes
 }
 
 // === Mailbox Update ===

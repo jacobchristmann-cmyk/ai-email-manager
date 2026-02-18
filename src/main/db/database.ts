@@ -78,6 +78,12 @@ export function getDb(): Database.Database {
   if (!columns.some((c) => c.name === 'mailbox')) {
     db.exec("ALTER TABLE emails ADD COLUMN mailbox TEXT DEFAULT 'INBOX'")
   }
+  if (!columns.some((c) => c.name === 'list_unsubscribe')) {
+    db.exec('ALTER TABLE emails ADD COLUMN list_unsubscribe TEXT')
+  }
+  if (!columns.some((c) => c.name === 'list_unsubscribe_post')) {
+    db.exec('ALTER TABLE emails ADD COLUMN list_unsubscribe_post TEXT')
+  }
 
   // Mailbox sync state table
   db.exec(`
@@ -102,11 +108,68 @@ export function getDb(): Database.Database {
     )
   `)
 
+  // Unsubscribe tracking
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS unsubscribe_log (
+      id TEXT PRIMARY KEY,
+      email_id TEXT NOT NULL,
+      sender TEXT NOT NULL,
+      method TEXT NOT NULL,
+      status TEXT NOT NULL,
+      url TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      confirmed_at TEXT
+    )
+  `)
+
   // Migrate existing last_uid from accounts to mailbox_sync_state for INBOX
   db.exec(`
     INSERT OR IGNORE INTO mailbox_sync_state (account_id, mailbox, last_uid)
     SELECT id, 'INBOX', last_uid FROM accounts WHERE last_uid > 0
   `)
+
+  // Migration: change unique constraint to include mailbox
+  // Check if we need to migrate by looking for the old unique index
+  const indices = db.pragma('index_list(emails)') as { name: string; unique: number }[]
+  const hasOldUnique = indices.some((idx) => {
+    if (!idx.unique) return false
+    const cols = db.pragma(`index_info(${idx.name})`) as { name: string }[]
+    return cols.length === 2 && cols.some((c) => c.name === 'account_id') && cols.some((c) => c.name === 'message_id') && !cols.some((c) => c.name === 'mailbox')
+  })
+  if (hasOldUnique) {
+    console.log('[db] Migrating unique constraint to include mailbox...')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS emails_new (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        uid INTEGER NOT NULL DEFAULT 0,
+        mailbox TEXT DEFAULT 'INBOX',
+        subject TEXT NOT NULL DEFAULT '',
+        from_address TEXT NOT NULL DEFAULT '',
+        to_address TEXT NOT NULL DEFAULT '',
+        date TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL DEFAULT '',
+        body_html TEXT,
+        list_unsubscribe TEXT,
+        list_unsubscribe_post TEXT,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        category_id TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+        UNIQUE(account_id, message_id, mailbox)
+      );
+      INSERT OR IGNORE INTO emails_new SELECT id, account_id, message_id, uid, mailbox, subject, from_address, to_address, date, body, body_html, list_unsubscribe, list_unsubscribe_post, is_read, category_id, created_at FROM emails;
+      DROP TABLE emails;
+      ALTER TABLE emails_new RENAME TO emails;
+      CREATE INDEX IF NOT EXISTS idx_emails_account_date ON emails(account_id, date DESC);
+      CREATE INDEX IF NOT EXISTS idx_emails_account_mailbox ON emails(account_id, mailbox);
+    `)
+    console.log('[db] Migration complete')
+  }
+
+  // Ensure mailbox index exists
+  db.exec('CREATE INDEX IF NOT EXISTS idx_emails_account_mailbox ON emails(account_id, mailbox)')
 
   return db
 }

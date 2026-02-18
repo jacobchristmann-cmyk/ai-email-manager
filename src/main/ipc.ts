@@ -4,9 +4,10 @@ import {
 } from './db/accountDao'
 import {
   listEmails, getEmail, markRead, markUnread, deleteEmail, getUnreadCounts,
-  updateEmailMailbox, insertUnsubscribeLog, updateUnsubscribeStatus, listUnsubscribeLogs
+  updateEmailMailbox, insertUnsubscribeLog, updateUnsubscribeStatus, listUnsubscribeLogs,
+  searchEmails, updateEmailBody, markAllReadInMailbox
 } from './db/emailDao'
-import { listMailboxes, createMailbox, moveEmail } from './email/imapClient'
+import { listMailboxes, createMailbox, moveEmail, fetchEmailBody } from './email/imapClient'
 import {
   getAllSettings, setMultipleSettings
 } from './db/settingsDao'
@@ -14,7 +15,7 @@ import {
   listCategories, getCategory, createCategory, updateCategory, deleteCategory,
   updateEmailCategory, addCategoryCorrection
 } from './db/categoryDao'
-import { syncAccount, syncAllAccounts, testConnection } from './email/syncService'
+import { syncAccount, syncAllAccounts, fullResyncAccount, testConnection } from './email/syncService'
 import { sendEmail } from './email/smtpClient'
 import { classifyEmails, classifyAllEmails } from './ai/classifyService'
 import { aiSearchEmails } from './ai/searchService'
@@ -24,7 +25,7 @@ import { unsubscribe } from './ai/unsubscribeService'
 import { startGoogleOAuth } from './ai/googleOAuth'
 import { updateSchedulerInterval } from './email/syncScheduler'
 import { analyzeUnreadEmails, analyzeEmail, chatWithContext, generateBriefing } from './ai/assistantService'
-import type { AccountCreate, CategoryCreate, ChatMessage, EmailSend, IpcResult } from '../shared/types'
+import type { AccountCreate, CategoryCreate, ChatMessage, EmailSearchParams, EmailSend, IpcResult } from '../shared/types'
 
 function ok<T>(data: T): IpcResult<T> {
   return { success: true, data }
@@ -146,10 +147,40 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('email:search', async (_e, params: EmailSearchParams) => {
+    try {
+      return ok(searchEmails(params))
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler bei der Suche')
+    }
+  })
+
   ipcMain.handle('email:get', async (_e, id: string) => {
     try {
       const email = getEmail(id)
       if (!email) return fail('E-Mail nicht gefunden')
+
+      // Lazy-load body from IMAP if not yet fetched
+      if (!email.body && email.uid > 0) {
+        const account = getAccount(email.accountId)
+        if (account) {
+          const imapConfig = {
+            host: account.imapHost,
+            port: account.imapPort,
+            username: account.username,
+            password: account.password
+          }
+          const bodyData = await fetchEmailBody(imapConfig, email.uid, email.mailbox)
+          if (bodyData) {
+            updateEmailBody(id, bodyData.body, bodyData.bodyHtml, bodyData.listUnsubscribe, bodyData.listUnsubscribePost)
+            email.body = bodyData.body
+            email.bodyHtml = bodyData.bodyHtml
+            email.listUnsubscribe = bodyData.listUnsubscribe
+            email.listUnsubscribePost = bodyData.listUnsubscribePost
+          }
+        }
+      }
+
       return ok(email)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Laden')
@@ -160,6 +191,15 @@ export function registerIpcHandlers(): void {
     try {
       markRead(id)
       return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Markieren')
+    }
+  })
+
+  ipcMain.handle('email:mark-all-read', async (_e, accountId: string, mailbox: string) => {
+    try {
+      const count = markAllReadInMailbox(accountId, mailbox)
+      return ok(count)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Markieren')
     }
@@ -302,6 +342,15 @@ export function registerIpcHandlers(): void {
       return ok(undefined)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Sync fehlgeschlagen')
+    }
+  })
+
+  ipcMain.handle('sync:full-resync', async (_e, accountId: string) => {
+    try {
+      await fullResyncAccount(accountId)
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Vollständiger Sync fehlgeschlagen')
     }
   })
 

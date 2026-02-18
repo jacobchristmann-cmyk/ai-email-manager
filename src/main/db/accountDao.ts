@@ -102,6 +102,11 @@ export function getLastUidForMailbox(accountId: string, mailbox: string): number
   return row?.last_uid ?? 0
 }
 
+export function resetMailboxSyncState(accountId: string): void {
+  const db = getDb()
+  db.prepare('DELETE FROM mailbox_sync_state WHERE account_id = ?').run(accountId)
+}
+
 export function updateLastSyncForMailbox(accountId: string, mailbox: string, lastUid: number): void {
   const db = getDb()
   db.prepare(

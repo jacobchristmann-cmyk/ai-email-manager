@@ -18,6 +18,8 @@ export interface FetchedEmail {
   date: string
   body: string
   bodyHtml: string | null
+  listUnsubscribe: string | null
+  listUnsubscribePost: string | null
   isSeen: boolean
 }
 
@@ -42,11 +44,13 @@ export async function listMailboxes(config: ImapConfig): Promise<Mailbox[]> {
   try {
     await client.connect()
     const list = await client.list()
-    return list.map((mb) => ({
-      name: mb.name,
-      path: mb.path,
-      specialUse: mb.specialUse || undefined
-    }))
+    return list
+      .filter((mb) => !mb.flags?.has('\\Noselect') && !mb.flags?.has('\\NonExistent'))
+      .map((mb) => ({
+        name: mb.name,
+        path: mb.path,
+        specialUse: mb.specialUse || undefined
+      }))
   } finally {
     await client.logout().catch(() => {})
   }
@@ -64,7 +68,6 @@ export async function fetchSeenUids(
     const lock = await client.getMailboxLock(mailbox)
 
     try {
-      // Use IMAP SEARCH to find all messages with \Seen flag — much faster than fetching flags individually
       const results = await client.search({ seen: true }, { uid: true })
       for (const uid of results) {
         seenUids.add(uid)
@@ -94,23 +97,21 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0, mail
       }
 
       let range: string
+      let useUid: boolean
+
       if (sinceUid > 0) {
         range = `${sinceUid + 1}:*`
+        useUid = true
       } else {
-        // First sync: last 50 messages by sequence number
-        const total = mb.exists
-        const start = Math.max(1, total - 49)
-        range = `${start}:*`
+        // First sync: fetch all messages
+        range = '1:*'
+        useUid = false
       }
 
-      const fetchOptions = {
-        uid: sinceUid > 0,
-        envelope: true,
-        source: true,
-        flags: true
-      }
+      // Only fetch envelope + flags (fast!) — no source/body download
+      for await (const msg of client.fetch(range, { uid: useUid, envelope: true, flags: true })) {
+        if (sinceUid > 0 && msg.uid <= sinceUid) continue
 
-      for await (const msg of client.fetch(range, fetchOptions)) {
         const envelope = msg.envelope
         if (!envelope) continue
 
@@ -121,20 +122,6 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0, mail
           ? `${envelope.to[0].name || ''} <${envelope.to[0].address || ''}>`.trim()
           : ''
 
-        let body = ''
-        let bodyHtml: string | null = null
-
-        if (msg.source) {
-          try {
-            const parsed = await simpleParser(msg.source)
-            body = parsed.text || ''
-            bodyHtml = parsed.html || null
-          } catch {
-            // Fallback: use raw source without parsing
-            body = msg.source.toString().slice(0, 5000)
-          }
-        }
-
         emails.push({
           uid: msg.uid,
           messageId: envelope.messageId || `unknown-${msg.uid}`,
@@ -142,8 +129,10 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0, mail
           from,
           to,
           date: envelope.date ? envelope.date.toISOString() : new Date().toISOString(),
-          body,
-          bodyHtml,
+          body: '',
+          bodyHtml: null,
+          listUnsubscribe: null,
+          listUnsubscribePost: null,
           isSeen: msg.flags?.has('\\Seen') ?? false
         })
       }
@@ -155,4 +144,89 @@ export async function fetchEmails(config: ImapConfig, sinceUid: number = 0, mail
   }
 
   return emails
+}
+
+/** Fetch full body for a single email by UID */
+export async function fetchEmailBody(
+  config: ImapConfig,
+  uid: number,
+  mailbox: string = 'INBOX'
+): Promise<{ body: string; bodyHtml: string | null; listUnsubscribe: string | null; listUnsubscribePost: string | null } | null> {
+  const client = createClient(config)
+
+  try {
+    await client.connect()
+    const lock = await client.getMailboxLock(mailbox)
+
+    try {
+      for await (const msg of client.fetch(String(uid), { uid: true, source: true })) {
+        if (!msg.source) return null
+
+        try {
+          const parsed = await simpleParser(msg.source)
+          const unsubHeader = parsed.headers.get('list-unsubscribe')
+          const unsubPostHeader = parsed.headers.get('list-unsubscribe-post')
+          return {
+            body: parsed.text || '',
+            bodyHtml: parsed.html || null,
+            listUnsubscribe: typeof unsubHeader === 'string' ? unsubHeader : null,
+            listUnsubscribePost: typeof unsubPostHeader === 'string' ? unsubPostHeader : null
+          }
+        } catch {
+          return {
+            body: msg.source.toString().slice(0, 5000),
+            bodyHtml: null,
+            listUnsubscribe: null,
+            listUnsubscribePost: null
+          }
+        }
+      }
+    } finally {
+      lock.release()
+    }
+  } finally {
+    await client.logout().catch(() => {})
+  }
+
+  return null
+}
+
+export async function createMailbox(config: ImapConfig, path: string): Promise<boolean> {
+  const client = createClient(config)
+  try {
+    await client.connect()
+    const result = await client.mailboxCreate(path)
+    console.log('[IMAP] mailboxCreate result:', JSON.stringify(result))
+    return true
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('ALREADYEXISTS')) {
+      console.log('[IMAP] Mailbox already exists:', path)
+      return true
+    }
+    console.error('[IMAP] Failed to create mailbox:', path, err)
+    throw err
+  } finally {
+    await client.logout().catch(() => {})
+  }
+}
+
+export async function moveEmail(
+  config: ImapConfig,
+  uid: number,
+  fromMailbox: string,
+  toMailbox: string
+): Promise<void> {
+  const client = createClient(config)
+  try {
+    await client.connect()
+    const lock = await client.getMailboxLock(fromMailbox)
+    try {
+      await client.messageMove(String(uid), toMailbox, { uid: true })
+    } finally {
+      lock.release()
+    }
+  } finally {
+    await client.logout().catch(() => {})
+  }
 }
