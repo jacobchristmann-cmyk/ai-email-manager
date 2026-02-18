@@ -19,6 +19,7 @@ interface EmailRow {
   is_read: number
   category_id: string | null
   created_at: string
+  has_body: number | undefined
 }
 
 function rowToEmail(row: EmailRow): Email {
@@ -37,7 +38,9 @@ function rowToEmail(row: EmailRow): Email {
     listUnsubscribe: row.list_unsubscribe ?? null,
     listUnsubscribePost: row.list_unsubscribe_post ?? null,
     isRead: row.is_read === 1,
-    categoryId: row.category_id
+    categoryId: row.category_id,
+    // has_body is computed by listEmails SQL; getEmail uses SELECT * (no has_body col) so falls back
+    hasBody: row.has_body !== undefined ? row.has_body === 1 : !!(row.body && row.body.length > 0)
   }
 }
 
@@ -89,19 +92,27 @@ export function insertEmails(emails: EmailInsert[]): number {
   return inserted
 }
 
+// Envelope-only column list: 150-char body snippet + has_body flag, no body_html
+// Reduces IPC payload from ~50-200 MB (full bodies) to ~1-5 MB for 500 emails
+const ENVELOPE_COLS = `
+  id, account_id, message_id, uid, mailbox, subject, from_address, to_address, date,
+  SUBSTR(body, 1, 150) as body,
+  NULL as body_html,
+  list_unsubscribe, list_unsubscribe_post,
+  is_read, category_id, created_at,
+  CASE WHEN body IS NOT NULL AND body != '' THEN 1 ELSE 0 END as has_body
+`
+
 export function listEmails(accountId?: string, mailbox?: string): Email[] {
   const db = getDb()
   const limit = 500
   if (accountId && mailbox) {
-    const rows = db.prepare('SELECT * FROM emails WHERE account_id = ? AND mailbox = ? ORDER BY date DESC LIMIT ?').all(accountId, mailbox, limit) as EmailRow[]
-    return rows.map(rowToEmail)
+    return (db.prepare(`SELECT ${ENVELOPE_COLS} FROM emails WHERE account_id = ? AND mailbox = ? ORDER BY date DESC LIMIT ?`).all(accountId, mailbox, limit) as EmailRow[]).map(rowToEmail)
   }
   if (accountId) {
-    const rows = db.prepare('SELECT * FROM emails WHERE account_id = ? ORDER BY date DESC LIMIT ?').all(accountId, limit) as EmailRow[]
-    return rows.map(rowToEmail)
+    return (db.prepare(`SELECT ${ENVELOPE_COLS} FROM emails WHERE account_id = ? ORDER BY date DESC LIMIT ?`).all(accountId, limit) as EmailRow[]).map(rowToEmail)
   }
-  const rows = db.prepare('SELECT * FROM emails ORDER BY date DESC LIMIT ?').all(limit) as EmailRow[]
-  return rows.map(rowToEmail)
+  return (db.prepare(`SELECT ${ENVELOPE_COLS} FROM emails ORDER BY date DESC LIMIT ?`).all(limit) as EmailRow[]).map(rowToEmail)
 }
 
 /** Returns the most recent emails without a fetched body, grouped for prefetching. */

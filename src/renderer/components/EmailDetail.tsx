@@ -10,6 +10,7 @@ export default function EmailDetail(): React.JSX.Element {
   const deleteEmail = useEmailStore((s) => s.deleteEmail)
   const setEmailCategory = useEmailStore((s) => s.setEmailCategory)
   const loadEmails = useEmailStore((s) => s.loadEmails)
+  const isBodyLoading = useEmailStore((s) => s.isBodyLoading)
   const categories = useCategoryStore((s) => s.categories)
 
   const email = selectedEmailId ? emails.find((e) => e.id === selectedEmailId) : undefined
@@ -295,14 +296,20 @@ export default function EmailDetail(): React.JSX.Element {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4">
-        {!email.body && !email.bodyHtml ? (
-          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            Inhalt wird geladen...
+        {isBodyLoading ? (
+          <div className="space-y-3 animate-pulse">
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-full" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-4/5" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-11/12" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-full" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-5/6" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-9/12" />
           </div>
+        ) : !email.hasBody ? (
+          <p className="text-sm italic text-gray-400 dark:text-gray-500">
+            Inhalt nicht verfügbar
+          </p>
         ) : iframeSrcDoc ? (
           <iframe
             srcDoc={iframeSrcDoc}

@@ -6,6 +6,7 @@ import Accounts from './pages/Accounts'
 import Settings from './pages/Settings'
 import Statistics from './pages/Statistics'
 import { useSettingsStore } from './stores/settingsStore'
+import { useEmailStore } from './stores/emailStore'
 
 export default function App(): React.JSX.Element {
   const { settings, loadSettings } = useSettingsStore()
@@ -15,6 +16,12 @@ export default function App(): React.JSX.Element {
     // Signal to main: renderer is mounted and ready to receive sync:status events
     window.electronAPI.notifyReady()
   }, [loadSettings])
+
+  useEffect(() => {
+    return window.electronAPI.onEmailBodyReady((updates) => {
+      useEmailStore.getState().refreshEmailBodies(updates)
+    })
+  }, [])
 
   useEffect(() => {
     const theme = settings.theme || 'light'

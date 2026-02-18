@@ -74,6 +74,13 @@ export interface Email {
   listUnsubscribePost: string | null
   isRead: boolean
   categoryId: string | null
+  hasBody: boolean
+}
+
+export interface EmailBodyUpdate {
+  id: string
+  body: string
+  bodyHtml: string | null
 }
 
 export interface EmailSearchParams {
@@ -198,6 +205,7 @@ export interface ElectronAPI {
   syncAll: () => Promise<IpcResult<void>>
   syncFullResync: (accountId: string) => Promise<IpcResult<void>>
   onSyncStatus: (callback: (status: SyncStatus) => void) => () => void
+  onEmailBodyReady: (callback: (updates: EmailBodyUpdate[]) => void) => () => void
   // Settings methods
   settingsGet: () => Promise<IpcResult<Record<string, string>>>
   settingsSet: (settings: Record<string, string>) => Promise<IpcResult<void>>
@@ -266,6 +274,7 @@ export type IpcChannels =
   | 'sync:full-resync'
   | 'sync:prefetch-bodies'
   | 'sync:status'
+  | 'email:body-ready'
   | 'settings:get'
   | 'settings:set'
   | 'category:list'

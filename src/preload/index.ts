@@ -44,6 +44,16 @@ const electronAPI: ElectronAPI = {
     }
   },
 
+  onEmailBodyReady: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, updates: unknown): void => {
+      callback(updates as Parameters<typeof callback>[0])
+    }
+    ipcRenderer.on('email:body-ready', handler)
+    return () => {
+      ipcRenderer.removeListener('email:body-ready', handler)
+    }
+  },
+
   // Settings methods
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (settings) => ipcRenderer.invoke('settings:set', settings),

@@ -1,6 +1,7 @@
 import { ImapFlow } from 'imapflow'
 import { simpleParser } from 'mailparser'
 import type { Mailbox } from '../../shared/types'
+import { withAccountPool } from './imapPool'
 
 export interface ImapConfig {
   host: string
@@ -177,27 +178,31 @@ export async function syncMailboxes(
 export async function fetchEmailBody(
   config: ImapConfig,
   uid: number,
-  mailbox: string = 'INBOX'
+  mailbox: string = 'INBOX',
+  accountId?: string
 ): Promise<{ body: string; bodyHtml: string | null; listUnsubscribe: string | null; listUnsubscribePost: string | null } | null> {
-  const client = createClient(config)
-
-  try {
-    await client.connect()
+  const operation = async (client: ImapFlow) => {
     const lock = await client.getMailboxLock(mailbox)
-
     try {
-      for await (const msg of client.fetch(String(uid), { uid: true, source: true })) {
+      for await (const msg of client.fetch(String(uid), { uid: true, source: true }, { uid: true })) {
         if (!msg.source) return null
         return await parseSource(msg.source)
       }
+      return null
     } finally {
       lock.release()
     }
+  }
+
+  if (accountId) return withAccountPool(config, accountId, operation)
+
+  const client = createClient(config)
+  try {
+    await client.connect()
+    return await operation(client)
   } finally {
     await client.logout().catch(() => {})
   }
-
-  return null
 }
 
 export type BodyData = { body: string; bodyHtml: string | null; listUnsubscribe: string | null; listUnsubscribePost: string | null }
@@ -225,14 +230,13 @@ async function parseSource(source: Buffer): Promise<BodyData> {
 export async function fetchEmailBodiesInMailbox(
   config: ImapConfig,
   mailbox: string,
-  uids: number[]
+  uids: number[],
+  accountId?: string
 ): Promise<Map<number, BodyData>> {
   if (uids.length === 0) return new Map()
-  const client = createClient(config)
-  const results = new Map<number, BodyData>()
 
-  try {
-    await client.connect()
+  const operation = async (client: ImapFlow) => {
+    const results = new Map<number, BodyData>()
     const lock = await client.getMailboxLock(mailbox)
     try {
       const uidSet = uids.join(',')
@@ -244,11 +248,18 @@ export async function fetchEmailBodiesInMailbox(
     } finally {
       lock.release()
     }
+    return results
+  }
+
+  if (accountId) return withAccountPool(config, accountId, operation)
+
+  const client = createClient(config)
+  try {
+    await client.connect()
+    return await operation(client)
   } finally {
     await client.logout().catch(() => {})
   }
-
-  return results
 }
 
 export async function createMailbox(config: ImapConfig, path: string): Promise<boolean> {
@@ -271,52 +282,53 @@ export async function createMailbox(config: ImapConfig, path: string): Promise<b
   }
 }
 
-export async function markEmailSeen(config: ImapConfig, uid: number, mailbox: string): Promise<void> {
-  const client = createClient(config)
-  try {
-    await client.connect()
+export async function markEmailSeen(config: ImapConfig, uid: number, mailbox: string, accountId?: string): Promise<void> {
+  const operation = async (client: ImapFlow) => {
     const lock = await client.getMailboxLock(mailbox)
     try {
       await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true })
     } finally {
       lock.release()
     }
-  } finally {
-    await client.logout().catch(() => {})
   }
+  if (accountId) return withAccountPool(config, accountId, operation)
+  const client = createClient(config)
+  try { await client.connect(); await operation(client) }
+  finally { await client.logout().catch(() => {}) }
 }
 
-export async function markEmailUnseen(config: ImapConfig, uid: number, mailbox: string): Promise<void> {
-  const client = createClient(config)
-  try {
-    await client.connect()
+export async function markEmailUnseen(config: ImapConfig, uid: number, mailbox: string, accountId?: string): Promise<void> {
+  const operation = async (client: ImapFlow) => {
     const lock = await client.getMailboxLock(mailbox)
     try {
       await client.messageFlagsRemove(String(uid), ['\\Seen'], { uid: true })
     } finally {
       lock.release()
     }
-  } finally {
-    await client.logout().catch(() => {})
   }
+  if (accountId) return withAccountPool(config, accountId, operation)
+  const client = createClient(config)
+  try { await client.connect(); await operation(client) }
+  finally { await client.logout().catch(() => {}) }
 }
 
 export async function moveEmail(
   config: ImapConfig,
   uid: number,
   fromMailbox: string,
-  toMailbox: string
+  toMailbox: string,
+  accountId?: string
 ): Promise<void> {
-  const client = createClient(config)
-  try {
-    await client.connect()
+  const operation = async (client: ImapFlow) => {
     const lock = await client.getMailboxLock(fromMailbox)
     try {
       await client.messageMove(String(uid), toMailbox, { uid: true })
     } finally {
       lock.release()
     }
-  } finally {
-    await client.logout().catch(() => {})
   }
+  if (accountId) return withAccountPool(config, accountId, operation)
+  const client = createClient(config)
+  try { await client.connect(); await operation(client) }
+  finally { await client.logout().catch(() => {}) }
 }

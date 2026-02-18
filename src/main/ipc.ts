@@ -161,7 +161,7 @@ export function registerIpcHandlers(): void {
       const email = getEmail(id)
       if (!email) return fail('E-Mail nicht gefunden')
 
-      // Lazy-load body from IMAP if not yet fetched
+      // Lazy-load body from IMAP if not yet fetched (uses pool — no reconnect if warm)
       if (!email.body && email.uid > 0) {
         const account = getAccount(email.accountId)
         if (account) {
@@ -171,13 +171,14 @@ export function registerIpcHandlers(): void {
             username: account.username,
             password: account.password
           }
-          const bodyData = await fetchEmailBody(imapConfig, email.uid, email.mailbox)
+          const bodyData = await fetchEmailBody(imapConfig, email.uid, email.mailbox, account.id)
           if (bodyData) {
             updateEmailBody(id, bodyData.body, bodyData.bodyHtml, bodyData.listUnsubscribe, bodyData.listUnsubscribePost)
             email.body = bodyData.body
             email.bodyHtml = bodyData.bodyHtml
             email.listUnsubscribe = bodyData.listUnsubscribe
             email.listUnsubscribePost = bodyData.listUnsubscribePost
+            email.hasBody = true
           }
         }
       }
@@ -198,7 +199,7 @@ export function registerIpcHandlers(): void {
         if (account) {
           markEmailSeen(
             { host: account.imapHost, port: account.imapPort, username: account.username, password: account.password },
-            email.uid, email.mailbox
+            email.uid, email.mailbox, account.id
           ).catch((err) => console.error('[ipc] Failed to set \\Seen on IMAP:', err))
         }
       }
@@ -227,7 +228,7 @@ export function registerIpcHandlers(): void {
         if (account) {
           markEmailUnseen(
             { host: account.imapHost, port: account.imapPort, username: account.username, password: account.password },
-            email.uid, email.mailbox
+            email.uid, email.mailbox, account.id
           ).catch((err) => console.error('[ipc] Failed to remove \\Seen from IMAP:', err))
         }
       }
@@ -269,7 +270,7 @@ export function registerIpcHandlers(): void {
         username: account.username,
         password: account.password
       }
-      await moveEmail(imapConfig, email.uid, email.mailbox, targetMailbox)
+      await moveEmail(imapConfig, email.uid, email.mailbox, targetMailbox, account.id)
       updateEmailMailbox(emailId, targetMailbox)
       return ok(undefined)
     } catch (err) {
@@ -305,7 +306,7 @@ export function registerIpcHandlers(): void {
           console.error('[Unsubscribe] Failed to create mailbox:', err)
         }
         try {
-          await moveEmail(imapConfig, email.uid, email.mailbox, targetMailbox)
+          await moveEmail(imapConfig, email.uid, email.mailbox, targetMailbox, account.id)
           updateEmailMailbox(emailId, targetMailbox)
           console.log('[Unsubscribe] Email moved to:', targetMailbox)
         } catch (err) {

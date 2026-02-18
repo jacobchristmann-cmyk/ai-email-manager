@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Email, EmailSearchParams, EmailSend, SyncStatus } from '../../shared/types'
+import type { Email, EmailBodyUpdate, EmailSearchParams, EmailSend, SyncStatus } from '../../shared/types'
 
 interface EmailState {
   emails: Email[]
@@ -28,6 +28,7 @@ interface EmailState {
   composeOpen: boolean
   composeData: Partial<EmailSend> | null
   isSending: boolean
+  isBodyLoading: boolean
 
   loadEmails: (accountId?: string, mailbox?: string) => Promise<void>
   selectEmail: (id: string | null) => Promise<void>
@@ -60,6 +61,8 @@ interface EmailState {
   openCompose: (prefill?: Partial<EmailSend>) => void
   closeCompose: () => void
   sendEmail: (data: EmailSend) => Promise<boolean>
+  // Body push updates
+  refreshEmailBodies: (updates: EmailBodyUpdate[]) => void
 }
 
 export const useEmailStore = create<EmailState>((set, get) => ({
@@ -85,6 +88,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   composeOpen: false,
   composeData: null,
   isSending: false,
+  isBodyLoading: false,
 
   loadEmails: async (accountId?, mailbox?) => {
     set({ isLoading: true })
@@ -96,7 +100,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       const unreadCount = emails.filter((e) => !e.isRead).length
       set({ emails, unreadCount, isLoading: false })
       // Trigger background prefetch for accounts that have emails without cached bodies
-      const accountsNeedingPrefetch = [...new Set(emails.filter((e) => !e.body).map((e) => e.accountId))]
+      const accountsNeedingPrefetch = [...new Set(emails.filter((e) => !e.hasBody).map((e) => e.accountId))]
       for (const aid of accountsNeedingPrefetch) {
         window.electronAPI.syncPrefetchBodies(aid).catch(() => {})
       }
@@ -106,7 +110,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   },
 
   selectEmail: async (id) => {
-    set({ selectedEmailId: id })
+    set({ selectedEmailId: id, isBodyLoading: false })
     if (id) {
       const email = get().emails.find((e) => e.id === id)
       if (email && !email.isRead) {
@@ -116,14 +120,18 @@ export const useEmailStore = create<EmailState>((set, get) => ({
           unreadCount: Math.max(0, state.unreadCount - 1)
         }))
       }
-      // Lazy-load body if not yet fetched
-      if (email && !email.body) {
+      // Always fetch full email: ~5ms from DB if body is cached, IMAP fetch if not.
+      // Pool connection is reused so subsequent clicks are near-instant.
+      set({ isBodyLoading: true })
+      try {
         const result = await window.electronAPI.emailGet(id)
         if (result.success && result.data && get().selectedEmailId === id) {
           set((state) => ({
-            emails: state.emails.map((e) => (e.id === id ? { ...e, ...result.data! } : e))
+            emails: state.emails.map((e) => (e.id === id ? { ...e, ...result.data!, hasBody: true } : e))
           }))
         }
+      } finally {
+        if (get().selectedEmailId === id) set({ isBodyLoading: false })
       }
     }
   },
@@ -375,5 +383,16 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       return true
     }
     return false
+  },
+
+  refreshEmailBodies: (updates) => {
+    const updateMap = new Map(updates.map((u) => [u.id, u]))
+    set((state) => ({
+      emails: state.emails.map((e) => {
+        const update = updateMap.get(e.id)
+        if (!update) return e
+        return { ...e, body: update.body, bodyHtml: update.bodyHtml, hasBody: true }
+      })
+    }))
   }
 }))
