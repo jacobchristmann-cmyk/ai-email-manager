@@ -1,7 +1,8 @@
 import { BrowserWindow, Notification } from 'electron'
 import { getAccount, getLastUidForMailbox, updateLastSyncForMailbox, listAccounts, resetMailboxSyncState } from '../db/accountDao'
 import { insertEmails, getUnreadUidsForMailbox, markReadByIds } from '../db/emailDao'
-import { fetchEmails, fetchSeenUids, listMailboxes, testImapConnection } from './imapClient'
+import { syncMailboxes, listMailboxes, testImapConnection } from './imapClient'
+import { prefetchBodiesForAccount } from './prefetchService'
 import { testSmtpConnection } from './smtpClient'
 import type { AccountCreate, SyncStatus } from '../../shared/types'
 
@@ -31,67 +32,62 @@ export async function syncAccount(accountId: string): Promise<void> {
     }
 
     const mailboxes = await listMailboxes(imapConfig)
-    let totalInserted = 0
-
     const totalMailboxes = mailboxes.length
     console.log(`[sync] ${account.name}: ${totalMailboxes} Mailboxen gefunden`)
 
-    for (let i = 0; i < mailboxes.length; i++) {
-      const mb = mailboxes[i]
-      const lastUid = getLastUidForMailbox(accountId, mb.path)
-      console.log(`[sync] ${mb.path}: lastUid=${lastUid}`)
-
+    // Build sync inputs — collect lastUid and localUnreadUids for each mailbox
+    const inputs = mailboxes.map((mb, i) => {
       broadcastSyncStatus({
         accountId,
         status: 'syncing',
         message: `${mb.path} (${i + 1}/${totalMailboxes})`,
         progress: { current: i + 1, total: totalMailboxes, mailbox: mb.path }
       })
+      return {
+        path: mb.path,
+        sinceUid: getLastUidForMailbox(accountId, mb.path),
+        localUnreadUids: getUnreadUidsForMailbox(accountId, mb.path).map((e) => e.uid)
+      }
+    })
 
-      try {
-        const fetched = await fetchEmails(imapConfig, lastUid, mb.path)
-        console.log(`[sync] ${mb.path}: ${fetched.length} neue Emails abgerufen`)
+    // Single IMAP connection for all mailboxes (replaces N×2 individual connections)
+    const results = await syncMailboxes(imapConfig, inputs)
 
-        if (fetched.length > 0) {
-          const emails = fetched.map((e) => ({
-            accountId,
-            messageId: e.messageId,
-            uid: e.uid,
-            mailbox: mb.path,
-            subject: e.subject,
-            from: e.from,
-            to: e.to,
-            date: e.date,
-            body: e.body,
-            bodyHtml: e.bodyHtml,
-            listUnsubscribe: e.listUnsubscribe,
-            listUnsubscribePost: e.listUnsubscribePost,
-            isRead: e.isSeen
-          }))
+    let totalInserted = 0
 
-          const inserted = insertEmails(emails)
-          totalInserted += inserted
+    for (const result of results) {
+      console.log(`[sync] ${result.path}: ${result.newEmails.length} neu, ${result.uidsToMarkRead.length} als gelesen markieren`)
 
-          const maxUid = Math.max(...fetched.map((e) => e.uid))
-          updateLastSyncForMailbox(accountId, mb.path, maxUid)
-        } else {
-          updateLastSyncForMailbox(accountId, mb.path, lastUid)
-        }
+      if (result.newEmails.length > 0) {
+        const emails = result.newEmails.map((e) => ({
+          accountId,
+          messageId: e.messageId,
+          uid: e.uid,
+          mailbox: result.path,
+          subject: e.subject,
+          from: e.from,
+          to: e.to,
+          date: e.date,
+          body: e.body,
+          bodyHtml: e.bodyHtml,
+          listUnsubscribe: e.listUnsubscribe,
+          listUnsubscribePost: e.listUnsubscribePost,
+          isRead: e.isSeen
+        }))
+        const inserted = insertEmails(emails)
+        totalInserted += inserted
+      }
 
-        // Sync read/seen flags: mark locally unread emails as read if seen on server
-        const unreadLocal = getUnreadUidsForMailbox(accountId, mb.path)
-        if (unreadLocal.length > 0) {
-          const seenOnServer = await fetchSeenUids(imapConfig, mb.path)
-          const toMarkRead = unreadLocal
-            .filter((e) => seenOnServer.has(e.uid))
-            .map((e) => e.id)
-          console.log(`[sync] ${mb.path}: ${unreadLocal.length} lokal ungelesen, ${seenOnServer.size} auf Server gelesen, ${toMarkRead.length} zu aktualisieren`)
-          if (toMarkRead.length > 0) {
-            markReadByIds(toMarkRead)
-          }
-        }
-      } catch (err) {
-        console.error(`[sync] Fehler bei Mailbox ${mb.path}:`, err)
+      updateLastSyncForMailbox(accountId, result.path, result.maxUid)
+
+      // Mark emails read whose \Seen flag appeared on server
+      if (result.uidsToMarkRead.length > 0) {
+        const unreadLocal = getUnreadUidsForMailbox(accountId, result.path)
+        const uidToId = new Map(unreadLocal.map((e) => [e.uid, e.id]))
+        const idsToMark = result.uidsToMarkRead
+          .map((uid) => uidToId.get(uid))
+          .filter((id): id is string => !!id)
+        if (idsToMark.length > 0) markReadByIds(idsToMark)
       }
     }
 
@@ -102,10 +98,7 @@ export async function syncAccount(accountId: string): Promise<void> {
       })
       notification.on('click', () => {
         const win = BrowserWindow.getAllWindows()[0]
-        if (win) {
-          win.show()
-          win.focus()
-        }
+        if (win) { win.show(); win.focus() }
       })
       notification.show()
     }
@@ -114,6 +107,11 @@ export async function syncAccount(accountId: string): Promise<void> {
       accountId,
       status: 'done',
       message: totalInserted > 0 ? `${totalInserted} neue E-Mail(s) synchronisiert` : 'Keine neuen E-Mails'
+    })
+
+    // Background-prefetch bodies for the most recent emails (fire-and-forget, non-blocking)
+    prefetchBodiesForAccount(accountId).catch((err) => {
+      console.error('[sync] Prefetch failed:', err instanceof Error ? err.message : err)
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unbekannter Fehler'
@@ -136,7 +134,6 @@ export async function syncAllAccounts(): Promise<void> {
 }
 
 export async function fullResyncAccount(accountId: string): Promise<void> {
-  // Reset all mailbox sync states so the next sync fetches everything
   resetMailboxSyncState(accountId)
   console.log(`[sync] Full resync triggered for ${accountId} — all lastUid reset to 0`)
   await syncAccount(accountId)

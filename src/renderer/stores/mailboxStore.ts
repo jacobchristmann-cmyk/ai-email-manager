@@ -60,9 +60,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
     await get().loadMailboxOrder()
     const accountsResult = await window.electronAPI.accountList()
     if (accountsResult.success && accountsResult.data) {
-      for (const account of accountsResult.data) {
-        await get().loadMailboxes(account.id)
-      }
+      await Promise.all(accountsResult.data.map((account) => get().loadMailboxes(account.id)))
     }
     set({ isLoading: false })
   },
@@ -79,9 +77,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
   loadAllUnreadCounts: async () => {
     const accountsResult = await window.electronAPI.accountList()
     if (accountsResult.success && accountsResult.data) {
-      for (const account of accountsResult.data) {
-        await get().loadUnreadCounts(account.id)
-      }
+      await Promise.all(accountsResult.data.map((account) => get().loadUnreadCounts(account.id)))
     }
   },
 

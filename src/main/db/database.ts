@@ -171,6 +171,37 @@ export function getDb(): Database.Database {
   // Ensure mailbox index exists
   db.exec('CREATE INDEX IF NOT EXISTS idx_emails_account_mailbox ON emails(account_id, mailbox)')
 
+  // FTS5 full-text search index for subject + body
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS emails_fts USING fts5(
+      email_id UNINDEXED,
+      subject,
+      body,
+      tokenize='unicode61'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS emails_fts_ai AFTER INSERT ON emails BEGIN
+      INSERT INTO emails_fts(email_id, subject, body)
+      VALUES (new.id, new.subject, new.body);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS emails_fts_au AFTER UPDATE OF subject, body ON emails BEGIN
+      UPDATE emails_fts SET subject = new.subject, body = new.body
+      WHERE email_id = new.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS emails_fts_ad AFTER DELETE ON emails BEGIN
+      DELETE FROM emails_fts WHERE email_id = old.id;
+    END;
+  `)
+
+  // Back-fill FTS index for any rows not yet indexed
+  db.exec(`
+    INSERT INTO emails_fts(email_id, subject, body)
+    SELECT id, subject, body FROM emails
+    WHERE id NOT IN (SELECT email_id FROM emails_fts)
+  `)
+
   return db
 }
 

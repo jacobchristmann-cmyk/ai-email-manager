@@ -1,3 +1,4 @@
+import { ipcMain } from 'electron'
 import { getSetting } from '../db/settingsDao'
 import { syncAllAccounts } from './syncService'
 
@@ -8,13 +9,14 @@ export function startScheduler(): void {
   const minutes = raw ? parseInt(raw, 10) : 0
   setTimer(minutes)
 
-  // Auto-sync on startup after a short delay so the window is ready to receive status updates
-  setTimeout(() => {
-    console.log('[scheduler] Auto-sync on startup...')
+  // Trigger initial sync only after the renderer signals it is fully mounted
+  // and has registered its sync:status listener — avoids the fragile 2s timeout.
+  ipcMain.once('renderer:ready', () => {
+    console.log('[scheduler] Renderer ready — starting initial sync...')
     syncAllAccounts().catch((err) => {
       console.error('[scheduler] Auto-sync failed:', err)
     })
-  }, 2000)
+  })
 }
 
 export function updateSchedulerInterval(minutes: number): void {

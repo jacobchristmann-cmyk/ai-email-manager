@@ -95,6 +95,11 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       const emails = result.data!
       const unreadCount = emails.filter((e) => !e.isRead).length
       set({ emails, unreadCount, isLoading: false })
+      // Trigger background prefetch for accounts that have emails without cached bodies
+      const accountsNeedingPrefetch = [...new Set(emails.filter((e) => !e.body).map((e) => e.accountId))]
+      for (const aid of accountsNeedingPrefetch) {
+        window.electronAPI.syncPrefetchBodies(aid).catch(() => {})
+      }
     } else {
       set({ isLoading: false })
     }

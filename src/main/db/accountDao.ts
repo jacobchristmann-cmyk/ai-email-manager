@@ -1,5 +1,6 @@
 import { v4 as uuid } from 'uuid'
 import { getDb } from './database'
+import { encryptPassword, decryptPassword, isEncrypted } from './encryption'
 import type { Account, AccountCreate } from '../../shared/types'
 
 interface AccountRow {
@@ -29,7 +30,7 @@ function rowToAccount(row: AccountRow): Account {
     smtpHost: row.smtp_host,
     smtpPort: row.smtp_port,
     username: row.username,
-    password: row.password,
+    password: decryptPassword(row.password),
     createdAt: row.created_at,
     lastSyncAt: row.last_sync_at
   }
@@ -41,7 +42,7 @@ export function createAccount(data: AccountCreate): Account {
   db.prepare(
     `INSERT INTO accounts (id, name, email, provider, imap_host, imap_port, smtp_host, smtp_port, username, password)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, data.name, data.email, data.provider, data.imapHost, data.imapPort, data.smtpHost, data.smtpPort, data.username, data.password)
+  ).run(id, data.name, data.email, data.provider, data.imapHost, data.imapPort, data.smtpHost, data.smtpPort, data.username, encryptPassword(data.password))
 
   return getAccount(id)!
 }
@@ -71,7 +72,7 @@ export function updateAccount(id: string, data: Partial<AccountCreate>): Account
   if (data.smtpHost !== undefined) { fields.push('smtp_host = ?'); values.push(data.smtpHost) }
   if (data.smtpPort !== undefined) { fields.push('smtp_port = ?'); values.push(data.smtpPort) }
   if (data.username !== undefined) { fields.push('username = ?'); values.push(data.username) }
-  if (data.password !== undefined) { fields.push('password = ?'); values.push(data.password) }
+  if (data.password !== undefined) { fields.push('password = ?'); values.push(encryptPassword(data.password)) }
 
   if (fields.length === 0) return getAccount(id)
 
@@ -114,4 +115,16 @@ export function updateLastSyncForMailbox(accountId: string, mailbox: string, las
      ON CONFLICT(account_id, mailbox) DO UPDATE SET last_uid = excluded.last_uid`
   ).run(accountId, mailbox, lastUid)
   db.prepare("UPDATE accounts SET last_sync_at = datetime('now') WHERE id = ?").run(accountId)
+}
+
+/** Einmalige Migration beim App-Start: verschlüsselt noch unverschlüsselte Passwörter. */
+export function migratePasswordEncryption(): void {
+  const db = getDb()
+  const rows = db.prepare('SELECT id, password FROM accounts').all() as { id: string; password: string }[]
+  for (const row of rows) {
+    if (!isEncrypted(row.password)) {
+      db.prepare('UPDATE accounts SET password = ? WHERE id = ?').run(encryptPassword(row.password), row.id)
+      console.log('[db] Password encrypted for account', row.id)
+    }
+  }
 }

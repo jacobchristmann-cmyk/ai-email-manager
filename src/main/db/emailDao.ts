@@ -104,6 +104,16 @@ export function listEmails(accountId?: string, mailbox?: string): Email[] {
   return rows.map(rowToEmail)
 }
 
+/** Returns the most recent emails without a fetched body, grouped for prefetching. */
+export function getEmailsNeedingBody(accountId: string, limit = 20): { id: string; uid: number; mailbox: string }[] {
+  const db = getDb()
+  return db.prepare(
+    `SELECT id, uid, mailbox FROM emails
+     WHERE account_id = ? AND (body IS NULL OR body = '') AND uid > 0
+     ORDER BY date DESC LIMIT ?`
+  ).all(accountId, limit) as { id: string; uid: number; mailbox: string }[]
+}
+
 const EXCLUDED_MAILBOXES_PATTERN = /junk|spam|unerwünscht|unerwuenscht|trash|papierkorb/i
 
 export function listEmailsForAI(accountId?: string, mailbox?: string): Email[] {
@@ -186,59 +196,54 @@ export interface EmailSearchParams {
   limit?: number
 }
 
+/** Escape special FTS5 characters in a query string. */
+function escapeFts5Query(q: string): string {
+  // Wrap in double quotes for phrase matching; escape embedded quotes
+  return '"' + q.replace(/"/g, '""') + '"'
+}
+
 export function searchEmails(params: EmailSearchParams): Email[] {
   const db = getDb()
+  const limit = params.limit ?? 100
+
+  // When a free-text query is present, use FTS5 for subject+body search (fast, indexed)
+  if (params.query?.trim()) {
+    const ftsQuery = escapeFts5Query(params.query.trim())
+    const conditions: string[] = ['e.id = fts.email_id', 'fts.emails_fts MATCH ?']
+    const values: unknown[] = [ftsQuery]
+
+    if (params.accountId) { conditions.push('e.account_id = ?'); values.push(params.accountId) }
+    if (params.mailbox)   { conditions.push('e.mailbox = ?');    values.push(params.mailbox) }
+    if (params.from)      { conditions.push('e.from_address LIKE ?'); values.push(`%${params.from}%`) }
+    if (params.to)        { conditions.push('e.to_address LIKE ?');   values.push(`%${params.to}%`) }
+    if (params.categoryId){ conditions.push('e.category_id = ?'); values.push(params.categoryId) }
+    if (params.dateFrom)  { conditions.push('e.date >= ?');       values.push(params.dateFrom) }
+    if (params.dateTo)    { conditions.push('e.date <= ?');       values.push(params.dateTo + 'T23:59:59.999Z') }
+    if (params.isRead !== undefined) { conditions.push('e.is_read = ?'); values.push(params.isRead ? 1 : 0) }
+
+    values.push(limit)
+    const sql = `SELECT e.* FROM emails e, emails_fts fts WHERE ${conditions.join(' AND ')} ORDER BY e.date DESC LIMIT ?`
+    const rows = db.prepare(sql).all(...values) as EmailRow[]
+    return rows.map(rowToEmail)
+  }
+
+  // No free-text query — use regular indexed filters
   const conditions: string[] = []
   const values: unknown[] = []
 
-  if (params.accountId) {
-    conditions.push('account_id = ?')
-    values.push(params.accountId)
-  }
-  if (params.mailbox) {
-    conditions.push('mailbox = ?')
-    values.push(params.mailbox)
-  }
-  if (params.from) {
-    conditions.push('from_address LIKE ?')
-    values.push(`%${params.from}%`)
-  }
-  if (params.to) {
-    conditions.push('to_address LIKE ?')
-    values.push(`%${params.to}%`)
-  }
-  if (params.subject) {
-    conditions.push('subject LIKE ?')
-    values.push(`%${params.subject}%`)
-  }
-  if (params.categoryId) {
-    conditions.push('category_id = ?')
-    values.push(params.categoryId)
-  }
-  if (params.query) {
-    conditions.push('(subject LIKE ? OR from_address LIKE ? OR body LIKE ?)')
-    const q = `%${params.query}%`
-    values.push(q, q, q)
-  }
-  if (params.dateFrom) {
-    conditions.push('date >= ?')
-    values.push(params.dateFrom)
-  }
-  if (params.dateTo) {
-    conditions.push('date <= ?')
-    values.push(params.dateTo + 'T23:59:59.999Z')
-  }
-  if (params.isRead !== undefined) {
-    conditions.push('is_read = ?')
-    values.push(params.isRead ? 1 : 0)
-  }
+  if (params.accountId) { conditions.push('account_id = ?');        values.push(params.accountId) }
+  if (params.mailbox)   { conditions.push('mailbox = ?');            values.push(params.mailbox) }
+  if (params.from)      { conditions.push('from_address LIKE ?');    values.push(`%${params.from}%`) }
+  if (params.to)        { conditions.push('to_address LIKE ?');      values.push(`%${params.to}%`) }
+  if (params.subject)   { conditions.push('subject LIKE ?');         values.push(`%${params.subject}%`) }
+  if (params.categoryId){ conditions.push('category_id = ?');        values.push(params.categoryId) }
+  if (params.dateFrom)  { conditions.push('date >= ?');              values.push(params.dateFrom) }
+  if (params.dateTo)    { conditions.push('date <= ?');              values.push(params.dateTo + 'T23:59:59.999Z') }
+  if (params.isRead !== undefined) { conditions.push('is_read = ?'); values.push(params.isRead ? 1 : 0) }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-  const limit = params.limit ?? 100
-  const sql = `SELECT * FROM emails ${where} ORDER BY date DESC LIMIT ?`
   values.push(limit)
-
-  const rows = db.prepare(sql).all(...values) as EmailRow[]
+  const rows = db.prepare(`SELECT * FROM emails ${where} ORDER BY date DESC LIMIT ?`).all(...values) as EmailRow[]
   return rows.map(rowToEmail)
 }
 

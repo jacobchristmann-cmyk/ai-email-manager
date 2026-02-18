@@ -230,6 +230,10 @@ export interface ElectronAPI {
   aiAssistantAnalyzeEmail: (emailId: string) => Promise<IpcResult<string>>
   aiAssistantChat: (params: { messages: ChatMessage[]; accountId?: string; mailbox?: string; focusedEmailId?: string }) => Promise<IpcResult<string>>
   aiAssistantBriefing: () => Promise<IpcResult<Briefing>>
+  // Sync prefetch
+  syncPrefetchBodies: (accountId: string) => Promise<IpcResult<void>>
+  // Lifecycle
+  notifyReady: () => void
 }
 
 // === IPC Channel Types ===
@@ -260,6 +264,7 @@ export type IpcChannels =
   | 'sync:account'
   | 'sync:all'
   | 'sync:full-resync'
+  | 'sync:prefetch-bodies'
   | 'sync:status'
   | 'settings:get'
   | 'settings:set'

@@ -7,7 +7,7 @@ import {
   updateEmailMailbox, insertUnsubscribeLog, updateUnsubscribeStatus, listUnsubscribeLogs,
   searchEmails, updateEmailBody, markAllReadInMailbox
 } from './db/emailDao'
-import { listMailboxes, createMailbox, moveEmail, fetchEmailBody } from './email/imapClient'
+import { listMailboxes, createMailbox, moveEmail, fetchEmailBody, markEmailSeen, markEmailUnseen } from './email/imapClient'
 import {
   getAllSettings, setMultipleSettings
 } from './db/settingsDao'
@@ -16,6 +16,7 @@ import {
   updateEmailCategory, addCategoryCorrection
 } from './db/categoryDao'
 import { syncAccount, syncAllAccounts, fullResyncAccount, testConnection } from './email/syncService'
+import { prefetchBodiesForAccount } from './email/prefetchService'
 import { sendEmail } from './email/smtpClient'
 import { classifyEmails, classifyAllEmails } from './ai/classifyService'
 import { aiSearchEmails } from './ai/searchService'
@@ -190,6 +191,17 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('email:mark-read', async (_e, id: string) => {
     try {
       markRead(id)
+      // Fire-and-forget: sync \Seen flag to IMAP server
+      const email = getEmail(id)
+      if (email && email.uid > 0) {
+        const account = getAccount(email.accountId)
+        if (account) {
+          markEmailSeen(
+            { host: account.imapHost, port: account.imapPort, username: account.username, password: account.password },
+            email.uid, email.mailbox
+          ).catch((err) => console.error('[ipc] Failed to set \\Seen on IMAP:', err))
+        }
+      }
       return ok(undefined)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Markieren')
@@ -208,6 +220,17 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('email:mark-unread', async (_e, id: string) => {
     try {
       markUnread(id)
+      // Fire-and-forget: remove \Seen flag from IMAP server
+      const email = getEmail(id)
+      if (email && email.uid > 0) {
+        const account = getAccount(email.accountId)
+        if (account) {
+          markEmailUnseen(
+            { host: account.imapHost, port: account.imapPort, username: account.username, password: account.password },
+            email.uid, email.mailbox
+          ).catch((err) => console.error('[ipc] Failed to remove \\Seen from IMAP:', err))
+        }
+      }
       return ok(undefined)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Markieren')
@@ -352,6 +375,14 @@ export function registerIpcHandlers(): void {
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Vollständiger Sync fehlgeschlagen')
     }
+  })
+
+  ipcMain.handle('sync:prefetch-bodies', async (_e, accountId: string) => {
+    // Fire-and-forget — start prefetch in background, return immediately
+    prefetchBodiesForAccount(accountId).catch((err) => {
+      console.error('[ipc] Prefetch failed:', err instanceof Error ? err.message : err)
+    })
+    return ok(undefined)
   })
 
   // === Settings Handlers ===

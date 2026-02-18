@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar'
 import Inbox from './pages/Inbox'
 import Accounts from './pages/Accounts'
 import Settings from './pages/Settings'
+import Statistics from './pages/Statistics'
 import { useSettingsStore } from './stores/settingsStore'
 
 export default function App(): React.JSX.Element {
@@ -11,6 +12,8 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     loadSettings()
+    // Signal to main: renderer is mounted and ready to receive sync:status events
+    window.electronAPI.notifyReady()
   }, [loadSettings])
 
   useEffect(() => {
@@ -34,6 +37,10 @@ export default function App(): React.JSX.Element {
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-end gap-2 border-b border-gray-200 px-6 py-2 dark:border-gray-700">
+          <NavLink to="/statistics" className={({ isActive }) => topLinkClass(isActive)}>
+            <span className="text-sm">{'\u{1F4CA}'}</span>
+            <span>Statistik</span>
+          </NavLink>
           <NavLink to="/accounts" className={({ isActive }) => topLinkClass(isActive)}>
             <span className="text-sm">{'\u{1F464}'}</span>
             <span>Accounts</span>
@@ -46,6 +53,7 @@ export default function App(): React.JSX.Element {
         <main className="flex-1 overflow-auto p-6">
           <Routes>
             <Route path="/" element={<Inbox />} />
+            <Route path="/statistics" element={<Statistics />} />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>

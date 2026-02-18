@@ -83,7 +83,13 @@ const electronAPI: ElectronAPI = {
   aiAssistantAnalyze: (accountId?, mailbox?) => ipcRenderer.invoke('ai:assistant-analyze', accountId, mailbox),
   aiAssistantAnalyzeEmail: (emailId) => ipcRenderer.invoke('ai:assistant-analyze-email', emailId),
   aiAssistantChat: (params) => ipcRenderer.invoke('ai:assistant-chat', params),
-  aiAssistantBriefing: () => ipcRenderer.invoke('ai:assistant-briefing')
+  aiAssistantBriefing: () => ipcRenderer.invoke('ai:assistant-briefing'),
+
+  // Sync prefetch
+  syncPrefetchBodies: (accountId) => ipcRenderer.invoke('sync:prefetch-bodies', accountId),
+
+  // Lifecycle
+  notifyReady: () => ipcRenderer.send('renderer:ready')
 }
 
 if (process.contextIsolated) {
