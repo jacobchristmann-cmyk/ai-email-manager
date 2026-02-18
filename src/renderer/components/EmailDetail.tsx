@@ -111,10 +111,13 @@ export default function EmailDetail(): React.JSX.Element {
   }
 
   const iframeSrcDoc = email.bodyHtml
-    ? `<!DOCTYPE html><html><head><style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; margin: 8px; color: #374151; }
-        @media (prefers-color-scheme: dark) { body { color: #D1D5DB; background: #1F2937; } a { color: #60A5FA; } }
-      </style></head><body>${email.bodyHtml}</body></html>`
+    ? `<!DOCTYPE html><html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https:; img-src * data: blob:; font-src https: data:;">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; margin: 8px; color: #374151; }
+          @media (prefers-color-scheme: dark) { body { color: #D1D5DB; background: #1F2937; } a { color: #60A5FA; } }
+        </style>
+      </head><body>${email.bodyHtml}</body></html>`
     : null
 
   return (
@@ -313,7 +316,6 @@ export default function EmailDetail(): React.JSX.Element {
         ) : iframeSrcDoc ? (
           <iframe
             srcDoc={iframeSrcDoc}
-            sandbox="allow-same-origin"
             className="h-full w-full border-0"
             title="E-Mail-Inhalt"
           />

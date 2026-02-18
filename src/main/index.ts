@@ -29,6 +29,18 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Prevent the app window from navigating away (e.g. target="_top" links in email iframes)
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const isInternal =
+      url.startsWith('http://localhost') ||
+      url.startsWith('http://127.0.0.1') ||
+      url.startsWith('file://')
+    if (!isInternal) {
+      event.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
