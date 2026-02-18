@@ -313,7 +313,7 @@ export default function EmailDetail(): React.JSX.Element {
         ) : iframeSrcDoc ? (
           <iframe
             srcDoc={iframeSrcDoc}
-            sandbox=""
+            sandbox="allow-same-origin"
             className="h-full w-full border-0"
             title="E-Mail-Inhalt"
           />

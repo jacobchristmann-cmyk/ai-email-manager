@@ -207,35 +207,75 @@ export interface EmailSearchParams {
   limit?: number
 }
 
-/** Escape special FTS5 characters in a query string. */
-function escapeFts5Query(q: string): string {
-  // Wrap in double quotes for phrase matching; escape embedded quotes
-  return '"' + q.replace(/"/g, '""') + '"'
+/**
+ * Build an FTS5 query with prefix matching for each whitespace-separated word.
+ * Strips FTS5 special operators to prevent syntax errors.
+ */
+function buildFts5Query(q: string): string {
+  const tokens = q.trim().split(/\s+/).filter(Boolean)
+  const clean = tokens
+    .map((t) => t.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter((t) => t.length > 0)
+    .map((t) => t + '*')
+  return clean.length > 0 ? clean.join(' ') : '"' + q.replace(/"/g, '""') + '"'
 }
 
 export function searchEmails(params: EmailSearchParams): Email[] {
   const db = getDb()
   const limit = params.limit ?? 100
 
-  // When a free-text query is present, use FTS5 for subject+body search (fast, indexed)
+  // When a free-text query is present:
+  // 1. FTS5 for indexed subject+body search (fast)
+  // 2. UNION with LIKE on from/to so sender/recipient names are always found
   if (params.query?.trim()) {
-    const ftsQuery = escapeFts5Query(params.query.trim())
-    const conditions: string[] = ['e.id = fts.email_id', 'fts.emails_fts MATCH ?']
-    const values: unknown[] = [ftsQuery]
+    const queryTerm = params.query.trim()
+    const likePattern = `%${queryTerm}%`
 
-    if (params.accountId) { conditions.push('e.account_id = ?'); values.push(params.accountId) }
-    if (params.mailbox)   { conditions.push('e.mailbox = ?');    values.push(params.mailbox) }
-    if (params.from)      { conditions.push('e.from_address LIKE ?'); values.push(`%${params.from}%`) }
-    if (params.to)        { conditions.push('e.to_address LIKE ?');   values.push(`%${params.to}%`) }
-    if (params.categoryId){ conditions.push('e.category_id = ?'); values.push(params.categoryId) }
-    if (params.dateFrom)  { conditions.push('e.date >= ?');       values.push(params.dateFrom) }
-    if (params.dateTo)    { conditions.push('e.date <= ?');       values.push(params.dateTo + 'T23:59:59.999Z') }
-    if (params.isRead !== undefined) { conditions.push('e.is_read = ?'); values.push(params.isRead ? 1 : 0) }
+    // ── FTS5 part ────────────────────────────────────────────────────────────
+    let ftsQuery: string
+    try {
+      ftsQuery = buildFts5Query(queryTerm)
+    } catch {
+      ftsQuery = '"' + queryTerm.replace(/"/g, '""') + '"'
+    }
+    const ftsConds: string[] = ['e.id = fts.email_id', 'fts.emails_fts MATCH ?']
+    const ftsVals: unknown[] = [ftsQuery]
 
-    values.push(limit)
-    const sql = `SELECT e.* FROM emails e, emails_fts fts WHERE ${conditions.join(' AND ')} ORDER BY e.date DESC LIMIT ?`
-    const rows = db.prepare(sql).all(...values) as EmailRow[]
-    return rows.map(rowToEmail)
+    // ── LIKE part (from / to) ─────────────────────────────────────────────────
+    const likeConds: string[] = ['(e.from_address LIKE ? OR e.to_address LIKE ? OR e.subject LIKE ?)']
+    const likeVals: unknown[] = [likePattern, likePattern, likePattern]
+
+    // Shared extra filters applied to both parts
+    const addFilter = (col: string, op: string, val: unknown): void => {
+      ftsConds.push(`e.${col} ${op} ?`); ftsVals.push(val)
+      likeConds.push(`e.${col} ${op} ?`); likeVals.push(val)
+    }
+    if (params.accountId) addFilter('account_id', '=', params.accountId)
+    if (params.mailbox)   addFilter('mailbox', '=', params.mailbox)
+    if (params.from)      addFilter('from_address', 'LIKE', `%${params.from}%`)
+    if (params.to)        addFilter('to_address', 'LIKE', `%${params.to}%`)
+    if (params.categoryId) addFilter('category_id', '=', params.categoryId)
+    if (params.dateFrom)  addFilter('date', '>=', params.dateFrom)
+    if (params.dateTo)    addFilter('date', '<=', params.dateTo + 'T23:59:59.999Z')
+    if (params.isRead !== undefined) addFilter('is_read', '=', params.isRead ? 1 : 0)
+
+    const allVals = [...ftsVals, ...likeVals, limit]
+    const sql = `
+      SELECT e.* FROM emails e, emails_fts fts WHERE ${ftsConds.join(' AND ')}
+      UNION
+      SELECT e.* FROM emails e WHERE ${likeConds.join(' AND ')}
+      ORDER BY date DESC LIMIT ?
+    `
+    try {
+      const rows = db.prepare(sql).all(...allVals) as EmailRow[]
+      return rows.map(rowToEmail)
+    } catch {
+      // FTS5 query failed (e.g. malformed) — fall back to LIKE-only
+      const fallbackVals = [...likeVals, limit]
+      const fallbackSql = `SELECT e.* FROM emails e WHERE ${likeConds.join(' AND ')} ORDER BY e.date DESC LIMIT ?`
+      const rows = db.prepare(fallbackSql).all(...fallbackVals) as EmailRow[]
+      return rows.map(rowToEmail)
+    }
   }
 
   // No free-text query — use regular indexed filters
