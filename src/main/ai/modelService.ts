@@ -37,11 +37,16 @@ const GOOGLE_DEFAULTS: ModelInfo[] = [
   { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite' }
 ]
 
+const OLLAMA_DEFAULTS: ModelInfo[] = [
+  { id: 'gpt-oss:20b', name: 'GPT-OSS 20B' }
+]
+
 export function getDefaultModels(provider: string): ModelInfo[] {
   switch (provider) {
     case 'openai': return OPENAI_DEFAULTS
     case 'anthropic': return ANTHROPIC_DEFAULTS
     case 'google': return GOOGLE_DEFAULTS
+    case 'ollama': return OLLAMA_DEFAULTS
     default: return []
   }
 }
@@ -112,6 +117,18 @@ async function fetchGeminiModels(settings: Record<string, string>): Promise<Mode
     .sort((a, b) => a.id.localeCompare(b.id))
 }
 
+async function fetchOllamaModels(baseUrl: string): Promise<ModelInfo[]> {
+  const response = await fetch(`${baseUrl}/api/tags`)
+  if (!response.ok) throw new Error(`Ollama API Fehler (${response.status})`)
+
+  const data = (await response.json()) as {
+    models: { name: string; model: string }[]
+  }
+  return (data.models || [])
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((m) => ({ id: m.name, name: m.name }))
+}
+
 export async function listModelsFromApi(params: ListModelsParams): Promise<ModelInfo[]> {
   const provider = params.provider
 
@@ -125,6 +142,11 @@ export async function listModelsFromApi(params: ListModelsParams): Promise<Model
   }
   if (provider === 'google') {
     return fetchGeminiModels(getAllSettings())
+  }
+  if (provider === 'ollama') {
+    const settings = getAllSettings()
+    const ollamaUrl = settings.ollamaUrl || 'http://localhost:11434'
+    return fetchOllamaModels(ollamaUrl)
   }
   throw new Error(`Unbekannter Provider: ${provider}`)
 }

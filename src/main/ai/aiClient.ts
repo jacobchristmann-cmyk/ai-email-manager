@@ -6,6 +6,60 @@ export interface ChatMessage {
   content: string
 }
 
+async function callOllamaChat(
+  baseUrl: string,
+  model: string,
+  messages: ChatMessage[]
+): Promise<string> {
+  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: model || 'gpt-oss:20b',
+      messages,
+      temperature: 0.3,
+      stream: false
+    })
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`Ollama API Fehler (${response.status}): ${text}`)
+  }
+
+  const data = (await response.json()) as {
+    choices: { message: { content: string } }[]
+  }
+  return data.choices[0]?.message?.content ?? ''
+}
+
+async function callOllamaText(
+  baseUrl: string,
+  model: string,
+  prompt: string
+): Promise<string> {
+  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: model || 'gpt-oss:20b',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      stream: false
+    })
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`Ollama API Fehler (${response.status}): ${text}`)
+  }
+
+  const data = (await response.json()) as {
+    choices: { message: { content: string } }[]
+  }
+  return data.choices[0]?.message?.content ?? ''
+}
+
 async function callOpenAIChat(
   apiKey: string,
   model: string,
@@ -239,6 +293,11 @@ export async function callAI(prompt: string): Promise<string> {
   const apiKey = settings.aiApiKey
   const model = settings.aiModel || ''
 
+  if (provider === 'ollama') {
+    const ollamaUrl = settings.ollamaUrl || 'http://localhost:11434'
+    return callOllamaText(ollamaUrl, model, prompt)
+  }
+
   if (provider === 'google') {
     if (!settings.googleAccessToken || !settings.googleRefreshToken) {
       throw new Error('Nicht bei Google angemeldet. Bitte in den Einstellungen anmelden.')
@@ -263,6 +322,11 @@ export async function callAIChat(messages: ChatMessage[]): Promise<string> {
   const provider = settings.aiProvider || 'openai'
   const apiKey = settings.aiApiKey
   const model = settings.aiModel || ''
+
+  if (provider === 'ollama') {
+    const ollamaUrl = settings.ollamaUrl || 'http://localhost:11434'
+    return callOllamaChat(ollamaUrl, model, messages)
+  }
 
   if (provider === 'google') {
     if (!settings.googleAccessToken || !settings.googleRefreshToken) {

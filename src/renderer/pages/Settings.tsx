@@ -25,6 +25,7 @@ export default function Settings(): React.JSX.Element {
   const [sidebarColor, setSidebarColor] = useState('#111827')
   const [emailDensity, setEmailDensity] = useState('comfortable')
   const [signature, setSignature] = useState('')
+  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434')
 
   // Model list state
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([])
@@ -60,6 +61,7 @@ export default function Settings(): React.JSX.Element {
     setSidebarColor(settings.sidebarColor || '#111827')
     setEmailDensity(settings.emailDensity || 'comfortable')
     setSignature(settings.signature || '')
+    setOllamaUrl(settings.ollamaUrl || 'http://localhost:11434')
     setGoogleClientId(settings.googleClientId || '')
     setGoogleClientSecret(settings.googleClientSecret || '')
   }, [settings])
@@ -102,9 +104,10 @@ export default function Settings(): React.JSX.Element {
 
     // Try API refresh with saved credentials
     const key = settings.aiApiKey || ''
-    const hasKey = aiProvider !== 'google' && key.trim()
+    const hasKey = aiProvider !== 'google' && aiProvider !== 'ollama' && key.trim()
     const hasGoogle = aiProvider === 'google' && !!(settings.googleAccessToken && settings.googleRefreshToken)
-    if (hasKey || hasGoogle) {
+    const hasOllama = aiProvider === 'ollama'
+    if (hasKey || hasGoogle || hasOllama) {
       refreshModelsFromApi(aiProvider, key)
     }
 
@@ -113,9 +116,10 @@ export default function Settings(): React.JSX.Element {
     refreshIntervalRef.current = setInterval(() => {
       const s = useSettingsStore.getState().settings
       const k = s.aiApiKey || ''
-      const hasK = aiProvider !== 'google' && k.trim()
+      const hasK = aiProvider !== 'google' && aiProvider !== 'ollama' && k.trim()
       const hasG = aiProvider === 'google' && !!(s.googleAccessToken && s.googleRefreshToken)
-      if (hasK || hasG) {
+      const hasO = aiProvider === 'ollama'
+      if (hasK || hasG || hasO) {
         refreshModelsFromApi(aiProvider, k)
       }
     }, 5 * 60 * 1000)
@@ -138,6 +142,7 @@ export default function Settings(): React.JSX.Element {
       sidebarColor,
       emailDensity,
       signature,
+      ollamaUrl,
       googleClientId,
       googleClientSecret
     })
@@ -233,10 +238,23 @@ export default function Settings(): React.JSX.Element {
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
                 <option value="google">Google Gemini (OAuth)</option>
+                <option value="ollama">Ollama (Lokal)</option>
               </select>
             </div>
 
-            {aiProvider === 'google' ? (
+            {aiProvider === 'ollama' ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Ollama URL</label>
+                <input
+                  type="text"
+                  value={ollamaUrl}
+                  onChange={(e) => setOllamaUrl(e.target.value)}
+                  placeholder="http://localhost:11434"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                />
+                <p className="mt-1 text-xs text-gray-400">Standard: http://localhost:11434 – kein API-Schlüssel erforderlich</p>
+              </div>
+            ) : aiProvider === 'google' ? (
               <>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Google Client-ID</label>
@@ -309,7 +327,7 @@ export default function Settings(): React.JSX.Element {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               >
                 <option value="">
-                  Standard ({aiProvider === 'google' ? 'gemini-2.0-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-4-5-20250929'})
+                  Standard ({aiProvider === 'google' ? 'gemini-2.0-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'gpt-oss:20b' : 'claude-sonnet-4-5-20250929'})
                 </option>
                 {availableModels.map((m) => (
                   <option key={m.id} value={m.id}>
