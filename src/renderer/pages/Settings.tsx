@@ -26,6 +26,8 @@ export default function Settings(): React.JSX.Element {
   const [emailDensity, setEmailDensity] = useState('comfortable')
   const [signature, setSignature] = useState('')
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434')
+  const [ollamaStatus, setOllamaStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle')
+  const [showOllamaGuide, setShowOllamaGuide] = useState(false)
 
   // Model list state
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([])
@@ -75,6 +77,13 @@ export default function Settings(): React.JSX.Element {
         }
       })
     }
+    if (aiProvider === 'ollama') {
+      setOllamaStatus('idle')
+      checkOllamaConnection(ollamaUrl)
+    } else {
+      setShowOllamaGuide(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiProvider])
 
   // Load hardcoded defaults immediately, then try API in background
@@ -167,6 +176,29 @@ export default function Settings(): React.JSX.Element {
     setGoogleConnected(false)
   }
 
+  const checkOllamaConnection = async (url?: string): Promise<void> => {
+    const targetUrl = url ?? ollamaUrl
+    setOllamaStatus('checking')
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 4000)
+      const res = await fetch(`${targetUrl}/api/tags`, { signal: controller.signal })
+      clearTimeout(timeout)
+      if (res.ok) {
+        setOllamaStatus('ok')
+        setShowOllamaGuide(false)
+        // Refresh model list with live data
+        refreshModelsFromApi('ollama', '')
+      } else {
+        setOllamaStatus('error')
+        setShowOllamaGuide(true)
+      }
+    } catch {
+      setOllamaStatus('error')
+      setShowOllamaGuide(true)
+    }
+  }
+
   const handleAddCategory = async (): Promise<void> => {
     if (!newCatName.trim()) return
     const success = await addCategory({
@@ -243,16 +275,49 @@ export default function Settings(): React.JSX.Element {
             </div>
 
             {aiProvider === 'ollama' ? (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Ollama URL</label>
-                <input
-                  type="text"
-                  value={ollamaUrl}
-                  onChange={(e) => setOllamaUrl(e.target.value)}
-                  placeholder="http://localhost:11434"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                />
-                <p className="mt-1 text-xs text-gray-400">Standard: http://localhost:11434 – kein API-Schlüssel erforderlich</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Ollama URL</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={ollamaUrl}
+                      onChange={(e) => setOllamaUrl(e.target.value)}
+                      placeholder="http://localhost:11434"
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                    />
+                    <button
+                      onClick={() => checkOllamaConnection()}
+                      disabled={ollamaStatus === 'checking'}
+                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                    >
+                      {ollamaStatus === 'checking' ? 'Prüfe...' : 'Testen'}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">Standard: http://localhost:11434 – kein API-Schlüssel erforderlich</p>
+                </div>
+
+                {/* Connection status */}
+                {ollamaStatus === 'ok' && (
+                  <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+                    <span className="h-2 w-2 rounded-full bg-green-500" />
+                    Ollama läuft und ist erreichbar
+                  </div>
+                )}
+                {ollamaStatus === 'error' && (
+                  <div className="flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                    <span className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-red-500" />
+                      Ollama nicht erreichbar
+                    </span>
+                    <button
+                      onClick={() => setShowOllamaGuide(true)}
+                      className="text-xs underline"
+                    >
+                      Installationsanleitung
+                    </button>
+                  </div>
+                )}
               </div>
             ) : aiProvider === 'google' ? (
               <>
@@ -631,5 +696,94 @@ export default function Settings(): React.JSX.Element {
         </div>
       </div>
     </div>
+
+    {/* Ollama Installation Guide Modal */}
+    {showOllamaGuide && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl dark:bg-gray-800">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/30">
+                <span className="text-lg">🦙</span>
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Ollama installieren</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Lokales KI-Modell einrichten</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowOllamaGuide(false)}
+              className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Steps */}
+          <div className="px-6 py-5">
+            <ol className="space-y-4">
+              <li className="flex gap-4">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">1</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Ollama herunterladen</p>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Besuche ollama.ai und lade die macOS-Version herunter.</p>
+                  <button
+                    onClick={() => window.electronAPI.shellOpenExternal('https://ollama.ai')}
+                    className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50"
+                  >
+                    ollama.ai öffnen ↗
+                  </button>
+                </div>
+              </li>
+
+              <li className="flex gap-4">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">2</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Installieren & starten</p>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Die App in den Programme-Ordner ziehen und öffnen. Ollama läuft dann im Hintergrund (Menüleiste).</p>
+                </div>
+              </li>
+
+              <li className="flex gap-4">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">3</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Modell herunterladen</p>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Terminal öffnen und folgendes Kommando ausführen:</p>
+                  <div className="mt-1.5 flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1.5 dark:bg-gray-700">
+                    <code className="flex-1 text-xs font-mono text-gray-800 dark:text-gray-200">ollama pull gpt-oss:20b</code>
+                  </div>
+                </div>
+              </li>
+
+              <li className="flex gap-4">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">✓</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Verbindung testen</p>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Sobald Ollama läuft, auf "Verbindung erneut prüfen" klicken.</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          {/* Footer */}
+          <div className="flex gap-2 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+            <button
+              onClick={() => checkOllamaConnection()}
+              disabled={ollamaStatus === 'checking'}
+              className="flex-1 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {ollamaStatus === 'checking' ? 'Prüfe Verbindung...' : 'Verbindung erneut prüfen'}
+            </button>
+            <button
+              onClick={() => setShowOllamaGuide(false)}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Schließen
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   )
 }

@@ -106,6 +106,9 @@ const electronAPI: ElectronAPI = {
   // Sync prefetch
   syncPrefetchBodies: (accountId) => ipcRenderer.invoke('sync:prefetch-bodies', accountId),
 
+  // Shell
+  shellOpenExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+
   // Lifecycle
   notifyReady: () => ipcRenderer.send('renderer:ready')
 }

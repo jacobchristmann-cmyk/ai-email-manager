@@ -386,6 +386,10 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('shell:open-external', async (_e, url: string) => {
+    await shell.openExternal(url)
+  })
+
   // === Contact Suggestions ===
 
   ipcMain.handle('email:contact-suggest', async (_e, query: string) => {

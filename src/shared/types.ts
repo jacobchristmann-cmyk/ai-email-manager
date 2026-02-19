@@ -265,6 +265,8 @@ export interface ElectronAPI {
   aiAssistantBriefing: () => Promise<IpcResult<Briefing>>
   // Sync prefetch
   syncPrefetchBodies: (accountId: string) => Promise<IpcResult<void>>
+  // Shell
+  shellOpenExternal: (url: string) => Promise<void>
   // Lifecycle
   notifyReady: () => void
 }
