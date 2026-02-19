@@ -179,21 +179,12 @@ export default function Settings(): React.JSX.Element {
   const checkOllamaConnection = async (url?: string): Promise<void> => {
     const targetUrl = url ?? ollamaUrl
     setOllamaStatus('checking')
-    try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 4000)
-      const res = await fetch(`${targetUrl}/api/tags`, { signal: controller.signal })
-      clearTimeout(timeout)
-      if (res.ok) {
-        setOllamaStatus('ok')
-        setShowOllamaGuide(false)
-        // Refresh model list with live data
-        refreshModelsFromApi('ollama', '')
-      } else {
-        setOllamaStatus('error')
-        setShowOllamaGuide(true)
-      }
-    } catch {
+    const result = await window.electronAPI.aiOllamaPing(targetUrl)
+    if (result.success && result.data === true) {
+      setOllamaStatus('ok')
+      setShowOllamaGuide(false)
+      refreshModelsFromApi('ollama', '')
+    } else {
       setOllamaStatus('error')
       setShowOllamaGuide(true)
     }

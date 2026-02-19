@@ -390,6 +390,15 @@ export function registerIpcHandlers(): void {
     await shell.openExternal(url)
   })
 
+  ipcMain.handle('ai:ollama-ping', async (_e, url: string) => {
+    try {
+      const response = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(4000) })
+      return ok(response.ok)
+    } catch {
+      return ok(false)
+    }
+  })
+
   // === Contact Suggestions ===
 
   ipcMain.handle('email:contact-suggest', async (_e, query: string) => {

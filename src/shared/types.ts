@@ -267,6 +267,7 @@ export interface ElectronAPI {
   syncPrefetchBodies: (accountId: string) => Promise<IpcResult<void>>
   // Shell
   shellOpenExternal: (url: string) => Promise<void>
+  aiOllamaPing: (url: string) => Promise<IpcResult<boolean>>
   // Lifecycle
   notifyReady: () => void
 }
