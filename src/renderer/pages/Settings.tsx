@@ -236,6 +236,7 @@ export default function Settings(): React.JSX.Element {
   }
 
   return (
+    <>
     <div className="h-full overflow-y-auto">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Einstellungen</h1>
@@ -785,5 +786,6 @@ export default function Settings(): React.JSX.Element {
         </div>
       </div>
     )}
+    </>
   )
 }
