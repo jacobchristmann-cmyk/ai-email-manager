@@ -470,3 +470,28 @@ export function listStarredEmails(): Email[] {
   const rows = db.prepare('SELECT * FROM emails WHERE is_starred = 1 ORDER BY date DESC').all() as EmailRow[]
   return rows.map(rowToEmail)
 }
+
+// === Signature Detection ===
+
+/** Returns plain-text bodies of recent sent emails for signature analysis. */
+export function getSentEmailBodies(accountId?: string, limit = 30): string[] {
+  const db = getDb()
+  const sentPattern = '%Sent%'
+  const sentPattern2 = '%Gesendet%'
+
+  let rows: { body: string }[]
+  if (accountId) {
+    rows = db.prepare(
+      `SELECT body FROM emails
+       WHERE account_id = ? AND (mailbox LIKE ? OR mailbox LIKE ?) AND body IS NOT NULL AND body != ''
+       ORDER BY date DESC LIMIT ?`
+    ).all(accountId, sentPattern, sentPattern2, limit) as { body: string }[]
+  } else {
+    rows = db.prepare(
+      `SELECT body FROM emails
+       WHERE (mailbox LIKE ? OR mailbox LIKE ?) AND body IS NOT NULL AND body != ''
+       ORDER BY date DESC LIMIT ?`
+    ).all(sentPattern, sentPattern2, limit) as { body: string }[]
+  }
+  return rows.map((r) => r.body).filter(Boolean)
+}

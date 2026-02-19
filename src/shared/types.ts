@@ -268,6 +268,8 @@ export interface ElectronAPI {
   // Shell
   shellOpenExternal: (url: string) => Promise<void>
   aiOllamaPing: (url: string) => Promise<IpcResult<boolean>>
+  // Signature detection
+  accountDetectSignature: (accountId?: string) => Promise<IpcResult<string | null>>
   // Lifecycle
   notifyReady: () => void
 }
@@ -324,6 +326,7 @@ export type IpcChannels =
   | 'ai:assistant-analyze-email'
   | 'ai:assistant-chat'
   | 'ai:assistant-briefing'
+  | 'account:detect-signature'
 
 // === Window augmentation ===
 

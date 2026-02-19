@@ -36,26 +36,25 @@ export async function syncAccount(accountId: string): Promise<void> {
     console.log(`[sync] ${account.name}: ${totalMailboxes} Mailboxen gefunden`)
 
     // Build sync inputs — collect lastUid and localUnreadUids for each mailbox
-    const inputs = mailboxes.map((mb, i) => {
-      broadcastSyncStatus({
-        accountId,
-        status: 'syncing',
-        message: `${mb.path} (${i + 1}/${totalMailboxes})`,
-        progress: { current: i + 1, total: totalMailboxes, mailbox: mb.path }
-      })
-      return {
-        path: mb.path,
-        sinceUid: getLastUidForMailbox(accountId, mb.path),
-        localUnreadUids: getUnreadUidsForMailbox(accountId, mb.path).map((e) => e.uid)
-      }
-    })
+    const inputs = mailboxes.map((mb) => ({
+      path: mb.path,
+      sinceUid: getLastUidForMailbox(accountId, mb.path),
+      localUnreadUids: getUnreadUidsForMailbox(accountId, mb.path).map((e) => e.uid)
+    }))
 
     // Single IMAP connection for all mailboxes (replaces N×2 individual connections)
     const results = await syncMailboxes(imapConfig, inputs)
 
     let totalInserted = 0
 
-    for (const result of results) {
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]
+      broadcastSyncStatus({
+        accountId,
+        status: 'syncing',
+        message: `${result.path} (${i + 1}/${totalMailboxes})`,
+        progress: { current: i + 1, total: totalMailboxes, mailbox: result.path }
+      })
       console.log(`[sync] ${result.path}: ${result.newEmails.length} neu, ${result.uidsToMarkRead.length} als gelesen markieren`)
 
       if (result.newEmails.length > 0) {

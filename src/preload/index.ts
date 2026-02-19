@@ -109,6 +109,7 @@ const electronAPI: ElectronAPI = {
   // Shell
   shellOpenExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   aiOllamaPing: (url) => ipcRenderer.invoke('ai:ollama-ping', url),
+  accountDetectSignature: (accountId?) => ipcRenderer.invoke('account:detect-signature', accountId),
 
   // Lifecycle
   notifyReady: () => ipcRenderer.send('renderer:ready')

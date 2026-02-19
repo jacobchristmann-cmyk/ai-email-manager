@@ -7,7 +7,7 @@ import {
   updateEmailMailbox, insertUnsubscribeLog, updateUnsubscribeStatus, listUnsubscribeLogs,
   searchEmails, updateEmailBody, markAllReadInMailbox,
   starEmail, unstarEmail, bulkMarkRead, bulkMarkUnread, bulkDelete,
-  getContactSuggestions, updateEmailAttachments
+  getContactSuggestions, updateEmailAttachments, getSentEmailBodies
 } from './db/emailDao'
 import { listMailboxes, createMailbox, moveEmail, fetchEmailBody, markEmailSeen, markEmailUnseen, appendToMailbox } from './email/imapClient'
 import {
@@ -753,4 +753,84 @@ export function registerIpcHandlers(): void {
       return fail(err instanceof Error ? err.message : 'Fehler beim KI-Chat')
     }
   })
+
+  // === Signature Detection ===
+
+  ipcMain.handle('account:detect-signature', async (_e, accountId?: string) => {
+    try {
+      const bodies = getSentEmailBodies(accountId, 30)
+      const signature = detectSignatureFromBodies(bodies)
+      return ok(signature)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler bei der Signaturer kennung')
+    }
+  })
+}
+
+/**
+ * Analyzes sent email bodies to detect a recurring signature.
+ * Strategy 1: RFC 5322 "-- \n" delimiter (standard across most email clients).
+ * Strategy 2: Common trailing lines across multiple emails.
+ */
+function detectSignatureFromBodies(bodies: string[]): string | null {
+  if (bodies.length === 0) return null
+
+  // Strategy 1: Look for RFC 5322 "-- " or "--" delimiter
+  const rfcSep = /\n--[ \t]*\n/
+  const rfcSigs: string[] = []
+  for (const body of bodies) {
+    const match = rfcSep.exec(body)
+    if (match) {
+      const sig = body.slice(match.index + match[0].length).trim()
+      if (sig.length >= 3 && sig.length <= 1000) rfcSigs.push(sig)
+    }
+  }
+  if (rfcSigs.length >= Math.min(2, bodies.length)) {
+    return mostCommonString(rfcSigs)
+  }
+
+  // Strategy 2: Find lines that appear at the end of most emails
+  if (bodies.length < 2) return null
+
+  const threshold = Math.ceil(bodies.length * 0.5)
+  const tailLines = bodies.map((b) =>
+    b.split('\n')
+      .map((l) => l.trimEnd())
+      .filter((l) => l.length > 0)
+      .slice(-8)
+  )
+
+  // Count how often each non-empty line appears across email tails
+  const lineFreq = new Map<string, number>()
+  for (const tail of tailLines) {
+    for (const line of new Set(tail)) {
+      lineFreq.set(line, (lineFreq.get(line) ?? 0) + 1)
+    }
+  }
+
+  const commonLineSet = new Set(
+    [...lineFreq.entries()]
+      .filter(([, count]) => count >= threshold)
+      .map(([line]) => line)
+  )
+
+  if (commonLineSet.size === 0) return null
+
+  // Reconstruct in natural order using the first email's tail as template
+  const sigLines = (tailLines[0] ?? []).filter((l) => commonLineSet.has(l))
+  if (sigLines.length === 0) return null
+
+  const sig = sigLines.join('\n').trim()
+  return sig.length >= 3 && sig.length <= 1000 ? sig : null
+}
+
+function mostCommonString(arr: string[]): string {
+  const freq = new Map<string, number>()
+  for (const s of arr) freq.set(s, (freq.get(s) ?? 0) + 1)
+  let best = arr[0]
+  let bestCount = 0
+  for (const [s, count] of freq) {
+    if (count > bestCount) { best = s; bestCount = count }
+  }
+  return best
 }

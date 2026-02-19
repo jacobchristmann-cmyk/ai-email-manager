@@ -40,9 +40,10 @@ export default function SyncButton(): React.JSX.Element {
           disabled={isSyncing}
           className="relative flex items-center gap-2 overflow-hidden rounded-l-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed"
         >
+          {/* Progress bar fills button from left */}
           {isSyncing && syncProgress && (
             <div
-              className="absolute inset-0 bg-blue-500 transition-all duration-300"
+              className="absolute inset-0 bg-blue-500 transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
             />
           )}
@@ -53,11 +54,7 @@ export default function SyncButton(): React.JSX.Element {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
             )}
-            {isSyncing && syncProgress
-              ? `${syncProgress.current}/${syncProgress.total}`
-              : isSyncing
-                ? 'Synchronisiere...'
-                : 'Sync'}
+            {isSyncing ? 'Synchronisiere...' : 'Sync'}
           </span>
         </button>
 
