@@ -242,7 +242,7 @@ export function registerIpcHandlers(): void {
     try {
       const account = getAccount(data.accountId)
       if (!account) return fail('Account nicht gefunden')
-      await sendEmail(account, data.to, data.subject, data.body)
+      await sendEmail(account, data.to, data.subject, data.body, data.cc, data.bcc)
       return ok(undefined)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Senden')

@@ -13,7 +13,7 @@ import AiAssistant from '../components/AiAssistant'
 import InboxBriefing from '../components/InboxBriefing'
 
 export default function Inbox(): React.JSX.Element {
-  const { loadEmails, handleSyncStatus, openCompose } = useEmailStore()
+  const { loadEmails, handleSyncStatus, openCompose, composeOpen } = useEmailStore()
   const { loadAccounts } = useAccountStore()
   const { loadCategories } = useCategoryStore()
   const isAssistantOpen = useChatStore((s) => s.isOpen)
@@ -25,6 +25,54 @@ export default function Inbox(): React.JSX.Element {
     const cleanup = window.electronAPI.onSyncStatus(handleSyncStatus)
     return cleanup
   }, [loadEmails, handleSyncStatus, loadAccounts, loadCategories])
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      // Skip when compose is open or focus is in an input
+      if (composeOpen) return
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+
+      const store = useEmailStore.getState()
+      const email = store.selectedEmailId ? store.emails.find((em) => em.id === store.selectedEmailId) : null
+
+      if (e.key === 'n') {
+        e.preventDefault()
+        openCompose()
+      } else if (e.key === 'r' && email) {
+        e.preventDefault()
+        const fromEmail = email.from.match(/<([^>]+)>/)?.[1] || email.from.replace(/<[^>]+>/, '').trim()
+        const date = new Date(email.date).toLocaleString('de-DE')
+        const quotedBody = `\n\n--- Ursprüngliche Nachricht ---\nVon: ${email.from}\nDatum: ${date}\nBetreff: ${email.subject}\n\n${email.body}`
+        openCompose({
+          accountId: email.accountId,
+          to: fromEmail,
+          subject: email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`,
+          body: quotedBody
+        })
+      } else if (e.key === 'f' && email) {
+        e.preventDefault()
+        const date = new Date(email.date).toLocaleString('de-DE')
+        const quotedBody = `\n\n--- Weitergeleitete Nachricht ---\nVon: ${email.from}\nAn: ${email.to}\nDatum: ${date}\nBetreff: ${email.subject}\n\n${email.body}`
+        openCompose({
+          accountId: email.accountId,
+          to: '',
+          subject: email.subject.startsWith('Fwd:') ? email.subject : `Fwd: ${email.subject}`,
+          body: quotedBody
+        })
+      } else if (e.key === 'd' && email) {
+        e.preventDefault()
+        if (confirm('E-Mail löschen?')) store.deleteEmail(email.id)
+      } else if (e.key === '/') {
+        e.preventDefault()
+        const searchInput = document.querySelector<HTMLInputElement>('input[placeholder*="durchsuchen"]')
+        searchInput?.focus()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [composeOpen, openCompose])
 
   return (
     <div className="flex h-full flex-col">

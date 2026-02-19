@@ -78,6 +78,16 @@ export default function EmailDetail(): React.JSX.Element {
     })
   }
 
+  const handleForward = (): void => {
+    const quotedBody = `\n\n--- Weitergeleitete Nachricht ---\nVon: ${email.from}\nAn: ${email.to}\nDatum: ${date}\nBetreff: ${email.subject}\n\n${email.body}`
+    openCompose({
+      accountId: email.accountId,
+      to: '',
+      subject: email.subject.startsWith('Fwd:') ? email.subject : `Fwd: ${email.subject}`,
+      body: quotedBody
+    })
+  }
+
   const handleSmartReply = async (): Promise<void> => {
     if (!email) return
     setIsLoadingReplies(true)
@@ -191,6 +201,12 @@ export default function EmailDetail(): React.JSX.Element {
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
             >
               Antworten
+            </button>
+            <button
+              onClick={handleForward}
+              className="rounded-lg bg-gray-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-600"
+            >
+              Weiterleiten
             </button>
             <button
               onClick={handleDelete}

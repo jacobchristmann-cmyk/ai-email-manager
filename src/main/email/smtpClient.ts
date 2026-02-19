@@ -23,7 +23,9 @@ export async function sendEmail(
   account: Account,
   to: string,
   subject: string,
-  body: string
+  body: string,
+  cc?: string,
+  bcc?: string
 ): Promise<void> {
   const transport = nodemailer.createTransport({
     host: account.smtpHost,
@@ -35,6 +37,8 @@ export async function sendEmail(
   await transport.sendMail({
     from: `${account.name} <${account.email}>`,
     to,
+    cc: cc || undefined,
+    bcc: bcc || undefined,
     subject,
     text: body
   })

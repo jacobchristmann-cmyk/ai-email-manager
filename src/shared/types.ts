@@ -100,6 +100,8 @@ export interface EmailSearchParams {
 export interface EmailSend {
   accountId: string
   to: string
+  cc?: string
+  bcc?: string
   subject: string
   body: string
 }
