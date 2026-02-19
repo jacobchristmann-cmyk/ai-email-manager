@@ -147,9 +147,9 @@ export default function Sidebar(): React.JSX.Element {
     }`
 
   return (
-    <aside className="flex h-full flex-col text-white" style={{ background: 'var(--sidebar-bg, #111827)' }}>
+    <aside className="flex h-full flex-col overflow-hidden text-white" style={{ background: 'var(--sidebar-bg, #111827)' }}>
       <div className="p-4 text-lg font-bold tracking-tight">{appName}</div>
-      <nav className="flex-1 space-y-1 overflow-y-auto px-2">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2">
         {accounts.map((account) => {
           const ordered = mailboxes[account.id] ? getOrderedMailboxes(account.id) : []
           return (
