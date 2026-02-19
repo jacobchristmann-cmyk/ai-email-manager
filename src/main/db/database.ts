@@ -84,6 +84,21 @@ export function getDb(): Database.Database {
   if (!columns.some((c) => c.name === 'list_unsubscribe_post')) {
     db.exec('ALTER TABLE emails ADD COLUMN list_unsubscribe_post TEXT')
   }
+  if (!columns.some((c) => c.name === 'is_starred')) {
+    db.exec('ALTER TABLE emails ADD COLUMN is_starred INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!columns.some((c) => c.name === 'has_attachments')) {
+    db.exec('ALTER TABLE emails ADD COLUMN has_attachments INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!columns.some((c) => c.name === 'attachments')) {
+    db.exec('ALTER TABLE emails ADD COLUMN attachments TEXT')
+  }
+  if (!columns.some((c) => c.name === 'in_reply_to')) {
+    db.exec('ALTER TABLE emails ADD COLUMN in_reply_to TEXT')
+  }
+  if (!columns.some((c) => c.name === 'thread_id')) {
+    db.exec('ALTER TABLE emails ADD COLUMN thread_id TEXT')
+  }
 
   // Mailbox sync state table
   db.exec(`

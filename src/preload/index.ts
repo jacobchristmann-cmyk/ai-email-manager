@@ -29,6 +29,14 @@ const electronAPI: ElectronAPI = {
   emailDelete: (id) => ipcRenderer.invoke('email:delete', id),
   emailUnsubscribe: (emailId) => ipcRenderer.invoke('email:unsubscribe', emailId),
   emailMove: (emailId, targetMailbox) => ipcRenderer.invoke('email:move', emailId, targetMailbox),
+  emailStar: (id) => ipcRenderer.invoke('email:star', id),
+  emailUnstar: (id) => ipcRenderer.invoke('email:unstar', id),
+  emailOpenAttachment: (emailId, tempPath) => ipcRenderer.invoke('email:open-attachment', emailId, tempPath),
+  emailContactSuggest: (query) => ipcRenderer.invoke('email:contact-suggest', query),
+  emailBulkMarkRead: (ids) => ipcRenderer.invoke('email:bulk-mark-read', ids),
+  emailBulkMarkUnread: (ids) => ipcRenderer.invoke('email:bulk-mark-unread', ids),
+  emailBulkDelete: (ids) => ipcRenderer.invoke('email:bulk-delete', ids),
+  dialogOpenFile: () => ipcRenderer.invoke('dialog:open-file'),
 
   // Sync methods
   syncAccount: (accountId) => ipcRenderer.invoke('sync:account', accountId),

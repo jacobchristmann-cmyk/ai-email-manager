@@ -56,6 +56,15 @@ export interface Mailbox {
   specialUse?: string
 }
 
+// === Attachment ===
+
+export interface Attachment {
+  filename: string
+  contentType: string
+  size: number
+  tempPath?: string  // local temp file path after body fetch
+}
+
 // === Email ===
 
 export interface Email {
@@ -73,8 +82,13 @@ export interface Email {
   listUnsubscribe: string | null
   listUnsubscribePost: string | null
   isRead: boolean
+  isStarred: boolean
   categoryId: string | null
   hasBody: boolean
+  hasAttachments: boolean
+  attachments: Attachment[]
+  inReplyTo: string | null
+  threadId: string | null
 }
 
 export interface EmailBodyUpdate {
@@ -104,6 +118,7 @@ export interface EmailSend {
   bcc?: string
   subject: string
   body: string
+  attachments?: { filename: string; path: string }[]
 }
 
 // === Category ===
@@ -202,6 +217,14 @@ export interface ElectronAPI {
   emailSearch: (params: EmailSearchParams) => Promise<IpcResult<Email[]>>
   emailMarkAllRead: (accountId: string, mailbox: string) => Promise<IpcResult<number>>
   emailMove: (emailId: string, targetMailbox: string) => Promise<IpcResult<void>>
+  emailStar: (id: string) => Promise<IpcResult<void>>
+  emailUnstar: (id: string) => Promise<IpcResult<void>>
+  emailOpenAttachment: (emailId: string, filename: string) => Promise<IpcResult<void>>
+  emailContactSuggest: (query: string) => Promise<IpcResult<string[]>>
+  emailBulkMarkRead: (ids: string[]) => Promise<IpcResult<void>>
+  emailBulkMarkUnread: (ids: string[]) => Promise<IpcResult<void>>
+  emailBulkDelete: (ids: string[]) => Promise<IpcResult<void>>
+  dialogOpenFile: () => Promise<IpcResult<{ filename: string; path: string }[]>>
   // Sync methods
   syncAccount: (accountId: string) => Promise<IpcResult<void>>
   syncAll: () => Promise<IpcResult<void>>

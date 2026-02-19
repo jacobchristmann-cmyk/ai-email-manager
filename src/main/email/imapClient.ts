@@ -1,6 +1,9 @@
 import { ImapFlow } from 'imapflow'
 import { simpleParser } from 'mailparser'
-import type { Mailbox } from '../../shared/types'
+import { writeFileSync, mkdirSync } from 'fs'
+import { join } from 'path'
+import { app } from 'electron'
+import type { Mailbox, Attachment } from '../../shared/types'
 import { withAccountPool } from './imapPool'
 
 export interface ImapConfig {
@@ -179,14 +182,15 @@ export async function fetchEmailBody(
   config: ImapConfig,
   uid: number,
   mailbox: string = 'INBOX',
-  accountId?: string
-): Promise<{ body: string; bodyHtml: string | null; listUnsubscribe: string | null; listUnsubscribePost: string | null } | null> {
+  accountId?: string,
+  emailId?: string
+): Promise<BodyData | null> {
   const operation = async (client: ImapFlow) => {
     const lock = await client.getMailboxLock(mailbox)
     try {
       for await (const msg of client.fetch(String(uid), { uid: true, source: true }, { uid: true })) {
         if (!msg.source) return null
-        return await parseSource(msg.source)
+        return await parseSource(msg.source, emailId)
       }
       return null
     } finally {
@@ -205,21 +209,80 @@ export async function fetchEmailBody(
   }
 }
 
-export type BodyData = { body: string; bodyHtml: string | null; listUnsubscribe: string | null; listUnsubscribePost: string | null }
+/** Append a raw RFC2822 message to an IMAP mailbox (e.g. Sent) */
+export async function appendToMailbox(
+  config: ImapConfig,
+  mailbox: string,
+  rawMessage: Buffer,
+  accountId?: string
+): Promise<void> {
+  const operation = async (client: ImapFlow) => {
+    await client.append(mailbox, rawMessage, ['\\Seen'])
+  }
 
-async function parseSource(source: Buffer): Promise<BodyData> {
+  if (accountId) return withAccountPool(config, accountId, operation)
+
+  const client = createClient(config)
+  try {
+    await client.connect()
+    await operation(client)
+  } finally {
+    await client.logout().catch(() => {})
+  }
+}
+
+export type BodyData = {
+  body: string
+  bodyHtml: string | null
+  listUnsubscribe: string | null
+  listUnsubscribePost: string | null
+  attachments: Attachment[]
+  inReplyTo: string | null
+}
+
+function getTempAttachmentDir(emailId?: string): string {
+  const base = join(app.getPath('temp'), 'ai-email-manager', 'attachments', emailId || 'unknown')
+  mkdirSync(base, { recursive: true })
+  return base
+}
+
+async function parseSource(source: Buffer, emailId?: string): Promise<BodyData> {
   try {
     const parsed = await simpleParser(source)
     const unsubHeader = parsed.headers.get('list-unsubscribe')
     const unsubPostHeader = parsed.headers.get('list-unsubscribe-post')
+    const inReplyToHeader = parsed.headers.get('in-reply-to')
+
+    // Extract and save attachments to temp dir
+    const attachments: Attachment[] = []
+    if (parsed.attachments && parsed.attachments.length > 0) {
+      const dir = getTempAttachmentDir(emailId)
+      for (const att of parsed.attachments) {
+        if (!att.filename || att.contentDisposition === 'inline') continue
+        const safeName = att.filename.replace(/[^a-zA-Z0-9._\-()]/g, '_')
+        const tempPath = join(dir, safeName)
+        try {
+          writeFileSync(tempPath, att.content)
+          attachments.push({
+            filename: att.filename,
+            contentType: att.contentType,
+            size: att.size || att.content.length,
+            tempPath
+          })
+        } catch { /* skip unwritable attachments */ }
+      }
+    }
+
     return {
       body: parsed.text || '',
       bodyHtml: parsed.html || null,
       listUnsubscribe: typeof unsubHeader === 'string' ? unsubHeader : null,
-      listUnsubscribePost: typeof unsubPostHeader === 'string' ? unsubPostHeader : null
+      listUnsubscribePost: typeof unsubPostHeader === 'string' ? unsubPostHeader : null,
+      attachments,
+      inReplyTo: typeof inReplyToHeader === 'string' ? inReplyToHeader : null,
     }
   } catch {
-    return { body: source.toString().slice(0, 5000), bodyHtml: null, listUnsubscribe: null, listUnsubscribePost: null }
+    return { body: source.toString().slice(0, 5000), bodyHtml: null, listUnsubscribe: null, listUnsubscribePost: null, attachments: [], inReplyTo: null }
   }
 }
 
@@ -231,7 +294,8 @@ export async function fetchEmailBodiesInMailbox(
   config: ImapConfig,
   mailbox: string,
   uids: number[],
-  accountId?: string
+  accountId?: string,
+  uidToEmailId?: Map<number, string>
 ): Promise<Map<number, BodyData>> {
   if (uids.length === 0) return new Map()
 
@@ -242,7 +306,8 @@ export async function fetchEmailBodiesInMailbox(
       const uidSet = uids.join(',')
       for await (const msg of client.fetch(uidSet, { uid: true, source: true }, { uid: true })) {
         if (msg.source) {
-          results.set(msg.uid, await parseSource(msg.source))
+          const emailId = uidToEmailId?.get(msg.uid)
+          results.set(msg.uid, await parseSource(msg.source, emailId))
         }
       }
     } finally {

@@ -17,12 +17,21 @@ interface EmailRow {
   list_unsubscribe: string | null
   list_unsubscribe_post: string | null
   is_read: number
+  is_starred: number
+  has_attachments: number
+  attachments: string | null
+  in_reply_to: string | null
+  thread_id: string | null
   category_id: string | null
   created_at: string
   has_body: number | undefined
 }
 
 function rowToEmail(row: EmailRow): Email {
+  let attachments: Email['attachments'] = []
+  try {
+    if (row.attachments) attachments = JSON.parse(row.attachments)
+  } catch { /* ignore */ }
   return {
     id: row.id,
     accountId: row.account_id,
@@ -38,9 +47,13 @@ function rowToEmail(row: EmailRow): Email {
     listUnsubscribe: row.list_unsubscribe ?? null,
     listUnsubscribePost: row.list_unsubscribe_post ?? null,
     isRead: row.is_read === 1,
+    isStarred: (row.is_starred ?? 0) === 1,
     categoryId: row.category_id,
-    // has_body is computed by listEmails SQL; getEmail uses SELECT * (no has_body col) so falls back
-    hasBody: row.has_body !== undefined ? row.has_body === 1 : !!(row.body && row.body.length > 0)
+    hasBody: row.has_body !== undefined ? row.has_body === 1 : !!(row.body && row.body.length > 0),
+    hasAttachments: (row.has_attachments ?? 0) === 1,
+    attachments,
+    inReplyTo: row.in_reply_to ?? null,
+    threadId: row.thread_id ?? null,
   }
 }
 
@@ -383,4 +396,77 @@ export function getUnsubscribeLogByEmailId(emailId: string): UnsubscribeLog | un
   const db = getDb()
   const row = db.prepare('SELECT * FROM unsubscribe_log WHERE email_id = ?').get(emailId) as UnsubscribeLogRow | undefined
   return row ? rowToUnsubscribeLog(row) : undefined
+}
+
+// === Star/Unstar ===
+
+export function starEmail(id: string): void {
+  getDb().prepare('UPDATE emails SET is_starred = 1 WHERE id = ?').run(id)
+}
+
+export function unstarEmail(id: string): void {
+  getDb().prepare('UPDATE emails SET is_starred = 0 WHERE id = ?').run(id)
+}
+
+// === Bulk Operations ===
+
+export function bulkMarkRead(ids: string[]): void {
+  if (ids.length === 0) return
+  const db = getDb()
+  const placeholders = ids.map(() => '?').join(',')
+  db.prepare(`UPDATE emails SET is_read = 1 WHERE id IN (${placeholders})`).run(...ids)
+}
+
+export function bulkMarkUnread(ids: string[]): void {
+  if (ids.length === 0) return
+  const db = getDb()
+  const placeholders = ids.map(() => '?').join(',')
+  db.prepare(`UPDATE emails SET is_read = 0 WHERE id IN (${placeholders})`).run(...ids)
+}
+
+export function bulkDelete(ids: string[]): void {
+  if (ids.length === 0) return
+  const db = getDb()
+  const placeholders = ids.map(() => '?').join(',')
+  db.prepare(`DELETE FROM emails WHERE id IN (${placeholders})`).run(...ids)
+}
+
+// === Contact Suggestions ===
+
+export function getContactSuggestions(query: string, limit = 8): string[] {
+  const db = getDb()
+  const pattern = `%${query}%`
+  const rows = db.prepare(`
+    SELECT DISTINCT from_address FROM emails
+    WHERE from_address LIKE ?
+    ORDER BY date DESC
+    LIMIT ?
+  `).all(pattern, limit) as { from_address: string }[]
+  return rows.map((r) => r.from_address)
+}
+
+// === Attachment metadata update ===
+
+export function updateEmailAttachments(
+  id: string,
+  hasAttachments: boolean,
+  attachments: import('../../shared/types').Attachment[]
+): void {
+  getDb()
+    .prepare('UPDATE emails SET has_attachments = ?, attachments = ? WHERE id = ?')
+    .run(hasAttachments ? 1 : 0, JSON.stringify(attachments), id)
+}
+
+// === Thread ID update ===
+
+export function updateEmailThreadId(id: string, threadId: string): void {
+  getDb().prepare('UPDATE emails SET thread_id = ? WHERE id = ?').run(threadId, id)
+}
+
+// === Starred filter for listEmails ===
+
+export function listStarredEmails(): Email[] {
+  const db = getDb()
+  const rows = db.prepare('SELECT * FROM emails WHERE is_starred = 1 ORDER BY date DESC').all() as EmailRow[]
+  return rows.map(rowToEmail)
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useEmailStore } from '../stores/emailStore'
 import { useCategoryStore } from '../stores/categoryStore'
 import type { SmartReplyResult } from '../../shared/types'
@@ -6,6 +6,7 @@ import type { SmartReplyResult } from '../../shared/types'
 export default function EmailDetail(): React.JSX.Element {
   const selectedEmailId = useEmailStore((s) => s.selectedEmailId)
   const emails = useEmailStore((s) => s.emails)
+  const selectEmail = useEmailStore((s) => s.selectEmail)
   const openCompose = useEmailStore((s) => s.openCompose)
   const deleteEmail = useEmailStore((s) => s.deleteEmail)
   const setEmailCategory = useEmailStore((s) => s.setEmailCategory)
@@ -15,8 +16,29 @@ export default function EmailDetail(): React.JSX.Element {
 
   const email = selectedEmailId ? emails.find((e) => e.id === selectedEmailId) : undefined
 
+  // Thread: find related emails by threadId or matching subject (Re:/Fwd: stripped)
+  const threadEmails = useMemo(() => {
+    if (!email) return []
+    const baseSubject = email.subject.replace(/^(Re:|Fwd:|AW:|Antwort:|WG:)\s*/i, '').trim().toLowerCase()
+    return emails
+      .filter((e) => {
+        if (e.id === email.id) return false
+        if (email.threadId && e.threadId === email.threadId) return true
+        if (email.messageId && e.inReplyTo === email.messageId) return true
+        if (email.inReplyTo && e.messageId === email.inReplyTo) return true
+        const eSub = e.subject.replace(/^(Re:|Fwd:|AW:|Antwort:|WG:)\s*/i, '').trim().toLowerCase()
+        return eSub === baseSubject && eSub.length > 3
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 10)
+  }, [email, emails])
+
   // Local state for the category dropdown to ensure immediate UI feedback
   const [localCategoryId, setLocalCategoryId] = useState<string | null>(email?.categoryId ?? null)
+
+  // Star state
+  const [isStarred, setIsStarred] = useState(email?.isStarred ?? false)
+  useEffect(() => { setIsStarred(email?.isStarred ?? false) }, [email?.isStarred, selectedEmailId])
 
   // Unsubscribe state
   const [isUnsubscribing, setIsUnsubscribing] = useState(false)
@@ -35,6 +57,14 @@ export default function EmailDetail(): React.JSX.Element {
   useEffect(() => {
     setLocalCategoryId(email?.categoryId ?? null)
   }, [email?.categoryId, selectedEmailId])
+
+  const handleToggleStar = async (): Promise<void> => {
+    if (!email) return
+    const newVal = !isStarred
+    setIsStarred(newVal)
+    if (newVal) await window.electronAPI.emailStar(email.id)
+    else await window.electronAPI.emailUnstar(email.id)
+  }
 
   // Reset smart replies and unsubscribe state when email changes
   useEffect(() => {
@@ -197,6 +227,17 @@ export default function EmailDetail(): React.JSX.Element {
               </>
             )}
             <button
+              onClick={handleToggleStar}
+              title={isStarred ? 'Stern entfernen' : 'Mit Stern markieren'}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                isStarred
+                  ? 'bg-yellow-400 text-white hover:bg-yellow-500'
+                  : 'border border-gray-300 text-gray-500 hover:border-yellow-400 hover:text-yellow-500 dark:border-gray-600 dark:text-gray-400'
+              }`}
+            >
+              {isStarred ? '★' : '☆'}
+            </button>
+            <button
               onClick={handleReply}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
             >
@@ -313,6 +354,32 @@ export default function EmailDetail(): React.JSX.Element {
         )}
       </div>
 
+      {/* Attachments */}
+      {email.hasAttachments && email.attachments.length > 0 && (
+        <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Anhänge</p>
+          <div className="flex flex-wrap gap-2">
+            {email.attachments.map((att) => (
+              <button
+                key={att.filename}
+                onClick={() => att.tempPath && window.electronAPI.emailOpenAttachment(email.id, att.tempPath)}
+                disabled={!att.tempPath}
+                title={att.tempPath ? att.filename : 'Anhang erst nach vollständigem Laden verfügbar'}
+                className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:border-blue-300 hover:bg-blue-50 disabled:cursor-default disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:border-blue-500 dark:hover:bg-blue-900/20"
+              >
+                <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                <span className="max-w-40 truncate">{att.filename}</span>
+                <span className="shrink-0 text-xs text-gray-400">
+                  {att.size < 1024 ? `${att.size} B` : att.size < 1048576 ? `${Math.round(att.size / 1024)} KB` : `${(att.size / 1048576).toFixed(1)} MB`}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4">
         {isBodyLoading ? (
@@ -341,6 +408,34 @@ export default function EmailDetail(): React.JSX.Element {
           </pre>
         )}
       </div>
+
+      {/* Thread */}
+      {threadEmails.length > 0 && (
+        <div className="shrink-0 border-t border-gray-200 dark:border-gray-700">
+          <div className="px-4 py-2">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+              Konversation ({threadEmails.length + 1} Nachrichten)
+            </p>
+            <div className="space-y-1">
+              {threadEmails.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => selectEmail(t.id)}
+                  className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${t.isRead ? 'bg-gray-300 dark:bg-gray-600' : 'bg-blue-500'}`} />
+                  <span className="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300">
+                    {t.from.replace(/<[^>]+>/, '').trim() || t.from}
+                  </span>
+                  <span className="shrink-0 text-xs text-gray-400">
+                    {new Date(t.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

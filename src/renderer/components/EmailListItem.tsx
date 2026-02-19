@@ -20,7 +20,8 @@ export default function EmailListItem({
   const categories = useCategoryStore((s) => s.categories)
   const category = email.categoryId ? categories.find((c) => c.id === email.categoryId) : null
   const analyzeEmail = useChatStore((s) => s.analyzeEmail)
-  const { markRead, markUnread, deleteEmail, moveEmail } = useEmailStore()
+  const { markRead, markUnread, deleteEmail, moveEmail, toggleStar, toggleSelectEmail, selectedIds } = useEmailStore()
+  const isSelected2 = selectedIds.has(email.id)
   const mailboxes = useMailboxStore((s) => s.mailboxes)
   const emailDensity = useSettingsStore((s) => s.settings.emailDensity || 'comfortable')
   const densityPy = emailDensity === 'compact' ? 'py-1.5' : emailDensity === 'spacious' ? 'py-5' : 'py-3'
@@ -94,42 +95,76 @@ export default function EmailListItem({
 
   return (
     <>
-      <button
-        onClick={onClick}
-        onContextMenu={handleContextMenu}
-        className={`w-full border-b border-gray-100 px-4 text-left transition-colors dark:border-gray-700 ${densityPy} ${
-          isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+      <div
+        className={`group relative border-b border-gray-100 dark:border-gray-700 ${
+          isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : isSelected2 ? 'bg-blue-50/60 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
         }`}
       >
-        <div className="flex items-baseline justify-between gap-2">
-          <span
-            className={`truncate text-sm ${
-              email.isRead ? 'text-gray-600 dark:text-gray-400' : 'font-semibold text-gray-900 dark:text-gray-100'
-            }`}
-          >
-            {email.from.replace(/<[^>]+>/, '').trim() || email.from}
-          </span>
-          <span className="shrink-0 text-xs text-gray-400">{dateStr}</span>
+        {/* Checkbox (shown on hover or when selected) */}
+        <div className="absolute left-1 top-1/2 -translate-y-1/2">
+          <input
+            type="checkbox"
+            checked={isSelected2}
+            onChange={() => toggleSelectEmail(email.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-3.5 w-3.5 cursor-pointer accent-blue-600 opacity-0 group-hover:opacity-100 data-[checked]:opacity-100"
+            data-checked={isSelected2 || undefined}
+          />
         </div>
-        <div className="mt-0.5 flex items-center gap-2">
-          <p
-            className={`min-w-0 flex-1 truncate text-sm ${
-              email.isRead ? 'text-gray-500 dark:text-gray-400' : 'font-medium text-gray-800 dark:text-gray-200'
-            }`}
-          >
-            {email.subject}
-          </p>
-          {category && (
+
+        <button
+          onClick={onClick}
+          onContextMenu={handleContextMenu}
+          className={`w-full px-4 text-left transition-colors ${densityPy} pl-6`}
+        >
+          <div className="flex items-baseline justify-between gap-2">
             <span
-              className="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium text-white"
-              style={{ backgroundColor: category.color }}
+              className={`truncate text-sm ${
+                email.isRead ? 'text-gray-600 dark:text-gray-400' : 'font-semibold text-gray-900 dark:text-gray-100'
+              }`}
             >
-              {category.name}
+              {email.from.replace(/<[^>]+>/, '').trim() || email.from}
             </span>
-          )}
-        </div>
-        <p className="mt-0.5 truncate text-xs text-gray-400">{snippet}</p>
-      </button>
+            <div className="flex shrink-0 items-center gap-1">
+              {email.hasAttachments && (
+                <span className="text-xs text-gray-400">📎</span>
+              )}
+              <span className="text-xs text-gray-400">{dateStr}</span>
+            </div>
+          </div>
+          <div className="mt-0.5 flex items-center gap-2">
+            <p
+              className={`min-w-0 flex-1 truncate text-sm ${
+                email.isRead ? 'text-gray-500 dark:text-gray-400' : 'font-medium text-gray-800 dark:text-gray-200'
+              }`}
+            >
+              {email.subject}
+            </p>
+            {category && (
+              <span
+                className="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                style={{ backgroundColor: category.color }}
+              >
+                {category.name}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-gray-400">{snippet}</p>
+        </button>
+
+        {/* Star button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); toggleStar(email.id) }}
+          className={`absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-sm transition-colors ${
+            email.isStarred
+              ? 'text-yellow-400'
+              : 'text-gray-200 opacity-0 hover:text-yellow-400 group-hover:opacity-100 dark:text-gray-600'
+          }`}
+          title={email.isStarred ? 'Stern entfernen' : 'Mit Stern markieren'}
+        >
+          {email.isStarred ? '★' : '☆'}
+        </button>
+      </div>
 
       {/* Context menu */}
       {contextMenu && (

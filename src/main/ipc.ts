@@ -1,13 +1,15 @@
-import { ipcMain, shell } from 'electron'
+import { ipcMain, shell, dialog } from 'electron'
 import {
   createAccount, listAccounts, getAccount, updateAccount, deleteAccount
 } from './db/accountDao'
 import {
   listEmails, getEmail, markRead, markUnread, deleteEmail, getUnreadCounts,
   updateEmailMailbox, insertUnsubscribeLog, updateUnsubscribeStatus, listUnsubscribeLogs,
-  searchEmails, updateEmailBody, markAllReadInMailbox
+  searchEmails, updateEmailBody, markAllReadInMailbox,
+  starEmail, unstarEmail, bulkMarkRead, bulkMarkUnread, bulkDelete,
+  getContactSuggestions, updateEmailAttachments
 } from './db/emailDao'
-import { listMailboxes, createMailbox, moveEmail, fetchEmailBody, markEmailSeen, markEmailUnseen } from './email/imapClient'
+import { listMailboxes, createMailbox, moveEmail, fetchEmailBody, markEmailSeen, markEmailUnseen, appendToMailbox } from './email/imapClient'
 import {
   getAllSettings, setMultipleSettings
 } from './db/settingsDao'
@@ -171,7 +173,7 @@ export function registerIpcHandlers(): void {
             username: account.username,
             password: account.password
           }
-          const bodyData = await fetchEmailBody(imapConfig, email.uid, email.mailbox, account.id)
+          const bodyData = await fetchEmailBody(imapConfig, email.uid, email.mailbox, account.id, id)
           if (bodyData) {
             updateEmailBody(id, bodyData.body, bodyData.bodyHtml, bodyData.listUnsubscribe, bodyData.listUnsubscribePost)
             email.body = bodyData.body
@@ -179,6 +181,12 @@ export function registerIpcHandlers(): void {
             email.listUnsubscribe = bodyData.listUnsubscribe
             email.listUnsubscribePost = bodyData.listUnsubscribePost
             email.hasBody = true
+            // Save attachment metadata to DB
+            if (bodyData.attachments.length > 0) {
+              updateEmailAttachments(id, true, bodyData.attachments)
+              email.hasAttachments = true
+              email.attachments = bodyData.attachments
+            }
           }
         }
       }
@@ -242,7 +250,24 @@ export function registerIpcHandlers(): void {
     try {
       const account = getAccount(data.accountId)
       if (!account) return fail('Account nicht gefunden')
-      await sendEmail(account, data.to, data.subject, data.body, data.cc, data.bcc)
+      const imapConfig = {
+        host: account.imapHost, port: account.imapPort,
+        username: account.username, password: account.password
+      }
+      const rawMessage = await sendEmail(account, data.to, data.subject, data.body, data.cc, data.bcc, data.attachments)
+
+      // Append to Sent folder (fire-and-forget, don't fail send on IMAP error)
+      if (rawMessage.length > 0) {
+        // Try common Sent folder names
+        const sentCandidates = ['Sent', 'Sent Messages', 'INBOX.Sent', 'Gesendete Elemente']
+        for (const folder of sentCandidates) {
+          try {
+            await appendToMailbox(imapConfig, folder, rawMessage, account.id)
+            break
+          } catch { /* try next */ }
+        }
+      }
+
       return ok(undefined)
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Senden')
@@ -327,6 +352,95 @@ export function registerIpcHandlers(): void {
       return ok({ method: result.method, logId: log.id, status: status as 'confirmed' | 'pending' })
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler beim Abmelden')
+    }
+  })
+
+  // === Star Handlers ===
+
+  ipcMain.handle('email:star', async (_e, id: string) => {
+    try {
+      starEmail(id)
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Markieren')
+    }
+  })
+
+  ipcMain.handle('email:unstar', async (_e, id: string) => {
+    try {
+      unstarEmail(id)
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Markieren')
+    }
+  })
+
+  // === Attachment Handler ===
+
+  ipcMain.handle('email:open-attachment', async (_e, _emailId: string, tempPath: string) => {
+    try {
+      await shell.openPath(tempPath)
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Öffnen des Anhangs')
+    }
+  })
+
+  // === Contact Suggestions ===
+
+  ipcMain.handle('email:contact-suggest', async (_e, query: string) => {
+    try {
+      return ok(getContactSuggestions(query))
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler bei Kontaktvorschlägen')
+    }
+  })
+
+  // === Bulk Operations ===
+
+  ipcMain.handle('email:bulk-mark-read', async (_e, ids: string[]) => {
+    try {
+      bulkMarkRead(ids)
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Markieren')
+    }
+  })
+
+  ipcMain.handle('email:bulk-mark-unread', async (_e, ids: string[]) => {
+    try {
+      bulkMarkUnread(ids)
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Markieren')
+    }
+  })
+
+  ipcMain.handle('email:bulk-delete', async (_e, ids: string[]) => {
+    try {
+      bulkDelete(ids)
+      return ok(undefined)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Löschen')
+    }
+  })
+
+  // === File Dialog ===
+
+  ipcMain.handle('dialog:open-file', async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile', 'multiSelections'],
+        title: 'Anhang auswählen'
+      })
+      if (result.canceled) return ok([])
+      const files = result.filePaths.map((p) => {
+        const parts = p.split('/')
+        return { filename: parts[parts.length - 1] || p, path: p }
+      })
+      return ok(files)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Fehler beim Öffnen des Dialogs')
     }
   })
 

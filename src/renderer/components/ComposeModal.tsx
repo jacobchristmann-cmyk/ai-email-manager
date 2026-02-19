@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useEmailStore } from '../stores/emailStore'
 import { useAccountStore } from '../stores/accountStore'
+import { useSettingsStore } from '../stores/settingsStore'
+
+const DRAFT_KEY = 'compose-draft'
 
 export default function ComposeModal(): React.JSX.Element | null {
   const { composeOpen, composeData, closeCompose, sendEmail, isSending } = useEmailStore()
   const { accounts } = useAccountStore()
+  const signature = useSettingsStore((s) => s.settings.signature || '')
 
   const [accountId, setAccountId] = useState('')
   const [to, setTo] = useState('')
@@ -13,33 +17,113 @@ export default function ComposeModal(): React.JSX.Element | null {
   const [showCcBcc, setShowCcBcc] = useState(false)
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
+  const [attachments, setAttachments] = useState<{ filename: string; path: string }[]>([])
   const [error, setError] = useState<string | null>(null)
-  const toRef = useRef<HTMLInputElement>(null)
 
+  // Contact autocomplete
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [activeField, setActiveField] = useState<'to' | 'cc' | 'bcc' | null>(null)
+
+  const toRef = useRef<HTMLInputElement>(null)
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Load draft / prefill on open
   useEffect(() => {
-    if (composeOpen) {
-      setAccountId(composeData?.accountId || accounts[0]?.id || '')
-      setTo(composeData?.to || '')
-      setCc(composeData?.cc || '')
-      setBcc(composeData?.bcc || '')
-      setShowCcBcc(!!(composeData?.cc || composeData?.bcc))
-      setSubject(composeData?.subject || '')
-      setBody(composeData?.body || '')
-      setError(null)
-      setTimeout(() => toRef.current?.focus(), 50)
+    if (!composeOpen) return
+
+    const sig = signature ? `\n\n--\n${signature}` : ''
+    const isPrefilled = composeData && Object.keys(composeData).length > 0
+
+    if (isPrefilled) {
+      setAccountId(composeData!.accountId || accounts[0]?.id || '')
+      setTo(composeData!.to || '')
+      setCc(composeData!.cc || '')
+      setBcc(composeData!.bcc || '')
+      setShowCcBcc(!!(composeData!.cc || composeData!.bcc))
+      setSubject(composeData!.subject || '')
+      setBody(composeData!.body ? composeData!.body + sig : sig)
+      setAttachments([])
+    } else {
+      try {
+        const saved = localStorage.getItem(DRAFT_KEY)
+        if (saved) {
+          const draft = JSON.parse(saved)
+          setAccountId(draft.accountId || accounts[0]?.id || '')
+          setTo(draft.to || '')
+          setCc(draft.cc || '')
+          setBcc(draft.bcc || '')
+          setShowCcBcc(!!(draft.cc || draft.bcc))
+          setSubject(draft.subject || '')
+          setBody(draft.body || sig)
+          setAttachments(draft.attachments || [])
+        } else {
+          setAccountId(accounts[0]?.id || '')
+          setTo(''); setCc(''); setBcc('')
+          setShowCcBcc(false)
+          setSubject('')
+          setBody(sig)
+          setAttachments([])
+        }
+      } catch {
+        setAccountId(accounts[0]?.id || '')
+        setTo(''); setCc(''); setBcc('')
+        setShowCcBcc(false); setSubject(''); setBody(sig); setAttachments([])
+      }
     }
-  }, [composeOpen, composeData, accounts])
+
+    setError(null)
+    setSuggestions([])
+    setTimeout(() => toRef.current?.focus(), 50)
+  }, [composeOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-save draft (debounced 1s) — only for new composes
+  const saveDraft = useCallback(() => {
+    const isPrefilled = composeData && Object.keys(composeData).length > 0
+    if (!composeOpen || isPrefilled) return
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ accountId, to, cc, bcc, subject, body, attachments }))
+      } catch { /* ignore */ }
+    }, 1000)
+  }, [composeOpen, composeData, accountId, to, cc, bcc, subject, body, attachments])
+
+  useEffect(() => { saveDraft() }, [accountId, to, cc, bcc, subject, body, attachments, saveDraft])
+
+  // Contact autocomplete
+  const fetchSuggestions = useCallback(async (query: string, field: 'to' | 'cc' | 'bcc') => {
+    const last = query.split(',').pop()?.trim() || ''
+    if (last.length < 2) { setSuggestions([]); setActiveField(null); return }
+    setActiveField(field)
+    const result = await window.electronAPI.emailContactSuggest(last)
+    if (result.success && result.data && result.data.length > 0) setSuggestions(result.data)
+    else setSuggestions([])
+  }, [])
+
+  const applySuggestion = (suggestion: string, field: 'to' | 'cc' | 'bcc'): void => {
+    const setter = field === 'to' ? setTo : field === 'cc' ? setCc : setBcc
+    const current = field === 'to' ? to : field === 'cc' ? cc : bcc
+    const parts = current.split(',')
+    parts[parts.length - 1] = suggestion
+    setter(parts.join(',').trimStart() + ', ')
+    setSuggestions([])
+    setActiveField(null)
+  }
 
   // Escape closes, Ctrl/Cmd+Enter sends
   useEffect(() => {
     if (!composeOpen) return
     const handler = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') { e.stopPropagation(); closeCompose() }
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        if (suggestions.length > 0) { setSuggestions([]); return }
+        closeCompose()
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleSend()
     }
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
-  }, [composeOpen, accountId, to, subject, body, cc, bcc]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [composeOpen, accountId, to, subject, body, cc, bcc, suggestions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!composeOpen) return null
 
@@ -55,10 +139,23 @@ export default function ComposeModal(): React.JSX.Element | null {
       cc: cc.trim() || undefined,
       bcc: bcc.trim() || undefined,
       subject: subject.trim(),
-      body
+      body,
+      attachments: attachments.length > 0 ? attachments : undefined
     })
-    if (!success) {
+    if (success) {
+      localStorage.removeItem(DRAFT_KEY)
+    } else {
       setError('Fehler beim Senden der E-Mail.')
+    }
+  }
+
+  const handleAddAttachment = async (): Promise<void> => {
+    const result = await window.electronAPI.dialogOpenFile()
+    if (result.success && result.data && result.data.length > 0) {
+      setAttachments((prev) => [
+        ...prev,
+        ...result.data!.filter((f) => !prev.some((p) => p.path === f.path))
+      ])
     }
   }
 
@@ -100,14 +197,15 @@ export default function ComposeModal(): React.JSX.Element | null {
           </div>
 
           {/* To + CC/BCC toggle */}
-          <div className="flex items-center gap-2">
+          <div className="relative flex items-center gap-2">
             <span className="w-14 shrink-0 text-right text-sm text-gray-500 dark:text-gray-400">An</span>
             <input
               ref={toRef}
               type="text"
               value={to}
-              onChange={(e) => setTo(e.target.value)}
-              placeholder="empfänger@example.com, weitere@example.com"
+              onChange={(e) => { setTo(e.target.value); fetchSuggestions(e.target.value, 'to') }}
+              onBlur={() => setTimeout(() => { setSuggestions([]); setActiveField(null) }, 150)}
+              placeholder="empfänger@example.com"
               className={inputClass}
             />
             <button
@@ -120,29 +218,49 @@ export default function ComposeModal(): React.JSX.Element | null {
             >
               CC/BCC
             </button>
+            {activeField === 'to' && suggestions.length > 0 && (
+              <div className="absolute left-16 top-full z-10 mt-1 max-h-40 w-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">
+                {suggestions.map((s) => (
+                  <button key={s} onMouseDown={() => applySuggestion(s, 'to')}
+                    className="w-full truncate px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {showCcBcc && (
             <>
-              <div className="flex items-center gap-2">
+              <div className="relative flex items-center gap-2">
                 <span className="w-14 shrink-0 text-right text-sm text-gray-500 dark:text-gray-400">CC</span>
-                <input
-                  type="text"
-                  value={cc}
-                  onChange={(e) => setCc(e.target.value)}
-                  placeholder="cc@example.com"
-                  className={inputClass}
-                />
+                <input type="text" value={cc}
+                  onChange={(e) => { setCc(e.target.value); fetchSuggestions(e.target.value, 'cc') }}
+                  onBlur={() => setTimeout(() => { setSuggestions([]); setActiveField(null) }, 150)}
+                  placeholder="cc@example.com" className={inputClass} />
+                {activeField === 'cc' && suggestions.length > 0 && (
+                  <div className="absolute left-16 top-full z-10 mt-1 max-h-40 w-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">
+                    {suggestions.map((s) => (
+                      <button key={s} onMouseDown={() => applySuggestion(s, 'cc')}
+                        className="w-full truncate px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">{s}</button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="relative flex items-center gap-2">
                 <span className="w-14 shrink-0 text-right text-sm text-gray-500 dark:text-gray-400">BCC</span>
-                <input
-                  type="text"
-                  value={bcc}
-                  onChange={(e) => setBcc(e.target.value)}
-                  placeholder="bcc@example.com"
-                  className={inputClass}
-                />
+                <input type="text" value={bcc}
+                  onChange={(e) => { setBcc(e.target.value); fetchSuggestions(e.target.value, 'bcc') }}
+                  onBlur={() => setTimeout(() => { setSuggestions([]); setActiveField(null) }, 150)}
+                  placeholder="bcc@example.com" className={inputClass} />
+                {activeField === 'bcc' && suggestions.length > 0 && (
+                  <div className="absolute left-16 top-full z-10 mt-1 max-h-40 w-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">
+                    {suggestions.map((s) => (
+                      <button key={s} onMouseDown={() => applySuggestion(s, 'bcc')}
+                        className="w-full truncate px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">{s}</button>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -168,24 +286,48 @@ export default function ComposeModal(): React.JSX.Element | null {
             className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
           />
 
+          {/* Attachments */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {attachments.map((a) => (
+                <div key={a.path} className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  <span className="max-w-40 truncate">{a.filename}</span>
+                  <button onClick={() => setAttachments((prev) => prev.filter((x) => x.path !== a.path))}
+                    className="ml-1 text-gray-400 hover:text-red-500">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         </div>
 
         {/* Footer */}
-        <div className="flex shrink-0 justify-end gap-3 border-t border-gray-200 px-5 py-3 dark:border-gray-700">
+        <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-5 py-3 dark:border-gray-700">
           <button
-            onClick={closeCompose}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            onClick={handleAddAttachment}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
           >
-            Abbrechen
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+            </svg>
+            Anhang
           </button>
-          <button
-            onClick={handleSend}
-            disabled={isSending}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isSending ? 'Sende...' : 'Senden'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={closeCompose}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Abbrechen
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={isSending}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isSending ? 'Sende...' : 'Senden'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

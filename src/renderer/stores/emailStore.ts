@@ -61,6 +61,16 @@ interface EmailState {
   openCompose: (prefill?: Partial<EmailSend>) => void
   closeCompose: () => void
   sendEmail: (data: EmailSend) => Promise<boolean>
+  // Star
+  toggleStar: (id: string) => void
+  // Bulk
+  selectedIds: Set<string>
+  toggleSelectEmail: (id: string) => void
+  selectAllVisible: (ids: string[]) => void
+  clearSelection: () => void
+  bulkMarkRead: () => Promise<void>
+  bulkMarkUnread: () => Promise<void>
+  bulkDelete: () => Promise<void>
   // Body push updates
   refreshEmailBodies: (updates: EmailBodyUpdate[]) => void
 }
@@ -89,6 +99,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   composeData: null,
   isSending: false,
   isBodyLoading: false,
+  selectedIds: new Set<string>(),
 
   loadEmails: async (accountId?, mailbox?) => {
     set({ isLoading: true })
@@ -383,6 +394,70 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       return true
     }
     return false
+  },
+
+  toggleStar: (id) => {
+    const email = get().emails.find((e) => e.id === id)
+    if (!email) return
+    const newVal = !email.isStarred
+    set((state) => ({ emails: state.emails.map((e) => e.id === id ? { ...e, isStarred: newVal } : e) }))
+    if (newVal) window.electronAPI.emailStar(id).catch(() => {})
+    else window.electronAPI.emailUnstar(id).catch(() => {})
+  },
+
+  toggleSelectEmail: (id) => {
+    set((state) => {
+      const next = new Set(state.selectedIds)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return { selectedIds: next }
+    })
+  },
+
+  selectAllVisible: (ids) => {
+    set({ selectedIds: new Set(ids) })
+  },
+
+  clearSelection: () => {
+    set({ selectedIds: new Set() })
+  },
+
+  bulkMarkRead: async () => {
+    const ids = [...get().selectedIds]
+    if (ids.length === 0) return
+    await window.electronAPI.emailBulkMarkRead(ids)
+    set((state) => ({
+      emails: state.emails.map((e) => ids.includes(e.id) ? { ...e, isRead: true } : e),
+      unreadCount: Math.max(0, state.unreadCount - ids.filter((id) => !state.emails.find((e) => e.id === id)?.isRead).length),
+      selectedIds: new Set()
+    }))
+  },
+
+  bulkMarkUnread: async () => {
+    const ids = [...get().selectedIds]
+    if (ids.length === 0) return
+    await window.electronAPI.emailBulkMarkUnread(ids)
+    const wasReadCount = ids.filter((id) => get().emails.find((e) => e.id === id)?.isRead).length
+    set((state) => ({
+      emails: state.emails.map((e) => ids.includes(e.id) ? { ...e, isRead: false } : e),
+      unreadCount: state.unreadCount + wasReadCount,
+      selectedIds: new Set()
+    }))
+  },
+
+  bulkDelete: async () => {
+    const ids = [...get().selectedIds]
+    if (ids.length === 0) return
+    await window.electronAPI.emailBulkDelete(ids)
+    set((state) => {
+      const deletedUnread = ids.filter((id) => !state.emails.find((e) => e.id === id)?.isRead).length
+      return {
+        emails: state.emails.filter((e) => !ids.includes(e.id)),
+        selectedEmailId: ids.includes(state.selectedEmailId ?? '') ? null : state.selectedEmailId,
+        unreadCount: Math.max(0, state.unreadCount - deletedUnread),
+        selectedIds: new Set()
+      }
+    })
   },
 
   refreshEmailBodies: (updates) => {

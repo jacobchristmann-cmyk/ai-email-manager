@@ -24,6 +24,7 @@ export default function Settings(): React.JSX.Element {
   const [fontFamily, setFontFamily] = useState('system')
   const [sidebarColor, setSidebarColor] = useState('#111827')
   const [emailDensity, setEmailDensity] = useState('comfortable')
+  const [signature, setSignature] = useState('')
 
   // Model list state
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([])
@@ -58,6 +59,7 @@ export default function Settings(): React.JSX.Element {
     setFontFamily(settings.fontFamily || 'system')
     setSidebarColor(settings.sidebarColor || '#111827')
     setEmailDensity(settings.emailDensity || 'comfortable')
+    setSignature(settings.signature || '')
     setGoogleClientId(settings.googleClientId || '')
     setGoogleClientSecret(settings.googleClientSecret || '')
   }, [settings])
@@ -135,6 +137,7 @@ export default function Settings(): React.JSX.Element {
       fontFamily,
       sidebarColor,
       emailDensity,
+      signature,
       googleClientId,
       googleClientSecret
     })
@@ -479,6 +482,19 @@ export default function Settings(): React.JSX.Element {
             </div>
 
           </div>
+        </div>
+
+        {/* Section 3b: Signature */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+          <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-gray-100">E-Mail-Signatur</h2>
+          <textarea
+            value={signature}
+            onChange={(e) => setSignature(e.target.value)}
+            rows={5}
+            placeholder={"Mit freundlichen Grüßen,\nMax Mustermann"}
+            className="w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+          />
+          <p className="mt-1 text-xs text-gray-400">Wird automatisch in neue E-Mails eingefügt (nach 2 Leerzeilen).</p>
         </div>
 
         {/* Section 4: Categories */}
