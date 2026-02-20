@@ -11,6 +11,7 @@ import {
   snoozeEmail, unsnoozeEmail, listSnoozedEmails
 } from './db/emailDao'
 import { detectEmailActions } from './ai/actionsService'
+import { listTemplates, createTemplate, updateTemplate, deleteTemplate } from './db/templateDao'
 import { listMailboxes, createMailbox, moveEmail, fetchEmailBody, markEmailSeen, markEmailUnseen, appendToMailbox } from './email/imapClient'
 import {
   getAllSettings, setMultipleSettings
@@ -784,6 +785,24 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('email:detect-actions', async (_e, id: string) => {
     try { return ok(await detectEmailActions(id)) } catch (err) { return fail(String(err)) }
+  })
+
+  // === Reply Templates ===
+
+  ipcMain.handle('template:list', async () => {
+    try { return ok(listTemplates()) } catch (err) { return fail(String(err)) }
+  })
+
+  ipcMain.handle('template:create', async (_e, name: string, body: string) => {
+    try { return ok(createTemplate(name, body)) } catch (err) { return fail(String(err)) }
+  })
+
+  ipcMain.handle('template:update', async (_e, id: string, data: { name?: string; body?: string }) => {
+    try { return ok(updateTemplate(id, data)) } catch (err) { return fail(String(err)) }
+  })
+
+  ipcMain.handle('template:delete', async (_e, id: string) => {
+    try { deleteTemplate(id); return ok(undefined) } catch (err) { return fail(String(err)) }
   })
 }
 

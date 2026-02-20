@@ -129,6 +129,35 @@ export function getDb(): Database.Database {
     )
   `)
 
+  // Reply templates
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reply_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT OR IGNORE INTO reply_templates (id, name, body) VALUES
+      ('tpl-abwesenheit', 'Abwesenheitsnotiz', 'Guten Tag,
+
+vielen Dank für Ihre E-Mail. Ich bin derzeit nicht erreichbar und werde mich so schnell wie möglich bei Ihnen melden.
+
+Mit freundlichen Grüßen
+{{MeinName}}'),
+      ('tpl-bestaetigung', 'Bestätigung', 'Guten Tag,
+
+hiermit bestätige ich den Erhalt Ihrer E-Mail zum Thema "{{Betreff}}". Ich werde mich zeitnah darum kümmern.
+
+Mit freundlichen Grüßen
+{{MeinName}}'),
+      ('tpl-rueckfrage', 'Rückfrage', 'Guten Tag,
+
+bezugnehmend auf Ihre E-Mail hätte ich noch eine kurze Frage:
+
+Mit freundlichen Grüßen
+{{MeinName}}')
+  `)
+
   // Unsubscribe tracking
   db.exec(`
     CREATE TABLE IF NOT EXISTS unsubscribe_log (

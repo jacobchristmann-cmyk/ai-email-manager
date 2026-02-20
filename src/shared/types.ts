@@ -157,6 +157,15 @@ export interface UnsubscribeLog {
   confirmedAt?: string
 }
 
+// === Reply Template ===
+
+export interface ReplyTemplate {
+  id: string
+  name: string
+  body: string
+  createdAt: string
+}
+
 // === Chat Message ===
 
 export interface ChatMessage {
@@ -284,6 +293,11 @@ export interface ElectronAPI {
   emailListSnoozed: () => Promise<IpcResult<Email[]>>
   emailDetectActions: (id: string) => Promise<IpcResult<ActionItem[]>>
   onSnoozeWakeup: (callback: (ids: string[]) => void) => () => void
+  // Reply Templates
+  templateList: () => Promise<IpcResult<ReplyTemplate[]>>
+  templateCreate: (name: string, body: string) => Promise<IpcResult<ReplyTemplate>>
+  templateUpdate: (id: string, data: { name?: string; body?: string }) => Promise<IpcResult<ReplyTemplate>>
+  templateDelete: (id: string) => Promise<IpcResult<void>>
   // Lifecycle
   notifyReady: () => void
 }
@@ -346,6 +360,10 @@ export type IpcChannels =
   | 'email:list-snoozed'
   | 'email:detect-actions'
   | 'email:snoozed-wakeup'
+  | 'template:list'
+  | 'template:create'
+  | 'template:update'
+  | 'template:delete'
 
 // === Window augmentation ===
 

@@ -122,6 +122,12 @@ const electronAPI: ElectronAPI = {
     return () => ipcRenderer.removeListener('email:snoozed-wakeup', handler)
   },
 
+  // Reply Templates
+  templateList: () => ipcRenderer.invoke('template:list'),
+  templateCreate: (name, body) => ipcRenderer.invoke('template:create', name, body),
+  templateUpdate: (id, data) => ipcRenderer.invoke('template:update', id, data),
+  templateDelete: (id) => ipcRenderer.invoke('template:delete', id),
+
   // Lifecycle
   notifyReady: () => ipcRenderer.send('renderer:ready')
 }

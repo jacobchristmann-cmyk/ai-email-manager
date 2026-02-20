@@ -2,13 +2,28 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useEmailStore } from '../stores/emailStore'
 import { useAccountStore } from '../stores/accountStore'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useTemplateStore } from '../stores/templateStore'
 
 const DRAFT_KEY = 'compose-draft'
+
+function resolveTemplateVars(
+  templateBody: string,
+  ctx: { to: string; subject: string; accountName: string; accountEmail: string }
+): string {
+  const date = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return templateBody
+    .replace(/\{\{Empfänger\}\}/g, ctx.to)
+    .replace(/\{\{Betreff\}\}/g, ctx.subject)
+    .replace(/\{\{Datum\}\}/g, date)
+    .replace(/\{\{MeinName\}\}/g, ctx.accountName)
+    .replace(/\{\{MeineEmail\}\}/g, ctx.accountEmail)
+}
 
 export default function ComposeModal(): React.JSX.Element | null {
   const { composeOpen, composeData, closeCompose, sendEmail, isSending } = useEmailStore()
   const { accounts } = useAccountStore()
   const signature = useSettingsStore((s) => s.settings.signature || '')
+  const { templates, loadTemplates } = useTemplateStore()
 
   const [accountId, setAccountId] = useState('')
   const [to, setTo] = useState('')
@@ -19,6 +34,7 @@ export default function ComposeModal(): React.JSX.Element | null {
   const [body, setBody] = useState('')
   const [attachments, setAttachments] = useState<{ filename: string; path: string }[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [showTemplates, setShowTemplates] = useState(false)
 
   // Contact autocomplete
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -26,6 +42,11 @@ export default function ComposeModal(): React.JSX.Element | null {
 
   const toRef = useRef<HTMLInputElement>(null)
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Load templates when compose opens
+  useEffect(() => {
+    if (composeOpen) loadTemplates()
+  }, [composeOpen, loadTemplates])
 
   // Load draft / prefill on open
   useEffect(() => {
@@ -116,6 +137,7 @@ export default function ComposeModal(): React.JSX.Element | null {
     const handler = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         e.stopPropagation()
+        if (showTemplates) { setShowTemplates(false); return }
         if (suggestions.length > 0) { setSuggestions([]); return }
         closeCompose()
       }
@@ -123,7 +145,7 @@ export default function ComposeModal(): React.JSX.Element | null {
     }
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
-  }, [composeOpen, accountId, to, subject, body, cc, bcc, suggestions]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [composeOpen, accountId, to, subject, body, cc, bcc, suggestions, showTemplates]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!composeOpen) return null
 
@@ -304,15 +326,58 @@ export default function ComposeModal(): React.JSX.Element | null {
 
         {/* Footer */}
         <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-5 py-3 dark:border-gray-700">
-          <button
-            onClick={handleAddAttachment}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-            </svg>
-            Anhang
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleAddAttachment}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+              Anhang
+            </button>
+
+            {/* Template picker */}
+            {templates.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowTemplates((v) => !v)}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Vorlage
+                </button>
+                {showTemplates && (
+                  <div className="absolute bottom-full left-0 z-20 mb-1 min-w-[200px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">
+                    <p className="border-b border-gray-100 px-3 py-1.5 text-xs font-medium text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                      Vorlage einfügen
+                    </p>
+                    {templates.map((tpl) => (
+                      <button
+                        key={tpl.id}
+                        onMouseDown={() => {
+                          const account = accounts.find((a) => a.id === accountId)
+                          const resolved = resolveTemplateVars(tpl.body, {
+                            to,
+                            subject,
+                            accountName: account?.name || '',
+                            accountEmail: account?.email || ''
+                          })
+                          setBody(resolved + '\n\n' + body.trimStart())
+                          setShowTemplates(false)
+                        }}
+                        className="flex w-full items-center px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700"
+                      >
+                        {tpl.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex gap-3">
             <button
               onClick={closeCompose}

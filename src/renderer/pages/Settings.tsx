@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useCategoryStore } from '../stores/categoryStore'
-import type { Category } from '../../shared/types'
+import { useTemplateStore } from '../stores/templateStore'
+import type { Category, ReplyTemplate } from '../../shared/types'
 
 export default function Settings(): React.JSX.Element {
   const { settings, isLoading, isSaving, error, success, loadSettings, saveSettings } =
@@ -30,7 +31,7 @@ export default function Settings(): React.JSX.Element {
   const [showOllamaGuide, setShowOllamaGuide] = useState(false)
   const [detectedSignature, setDetectedSignature] = useState<string | null>(null)
   const [detectingSignature, setDetectingSignature] = useState(false)
-  const [activeTab, setActiveTab] = useState<'general' | 'ai' | 'signature' | 'categories'>('general')
+  const [activeTab, setActiveTab] = useState<'general' | 'ai' | 'signature' | 'categories' | 'templates'>('general')
 
   // Model list state
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([])
@@ -50,10 +51,17 @@ export default function Settings(): React.JSX.Element {
   const [newCatDesc, setNewCatDesc] = useState('')
   const [editingCat, setEditingCat] = useState<Category | null>(null)
 
+  // Template management
+  const { templates, loadTemplates, createTemplate, updateTemplate, deleteTemplate } = useTemplateStore()
+  const [newTplName, setNewTplName] = useState('')
+  const [newTplBody, setNewTplBody] = useState('')
+  const [editingTpl, setEditingTpl] = useState<ReplyTemplate | null>(null)
+
   useEffect(() => {
     loadSettings()
     loadCategories()
-  }, [loadSettings, loadCategories])
+    loadTemplates()
+  }, [loadSettings, loadCategories, loadTemplates])
 
   useEffect(() => {
     setAiProvider(settings.aiProvider || 'openai')
@@ -242,6 +250,7 @@ export default function Settings(): React.JSX.Element {
     { id: 'ai' as const, label: 'KI' },
     { id: 'signature' as const, label: 'Signatur' },
     { id: 'categories' as const, label: 'Kategorien' },
+    { id: 'templates' as const, label: 'Vorlagen' },
   ]
 
   return (
@@ -250,7 +259,7 @@ export default function Settings(): React.JSX.Element {
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between px-1 pb-3">
         <h1 className="text-2xl font-bold">Einstellungen</h1>
-        {activeTab !== 'categories' && (
+        {activeTab !== 'categories' && activeTab !== 'templates' && (
           <button
             onClick={handleSave}
             disabled={isSaving}
@@ -652,6 +661,111 @@ export default function Settings(): React.JSX.Element {
                 className="w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               />
               <p className="mt-1 text-xs text-gray-400">Wird automatisch in neue E-Mails eingefügt (nach 2 Leerzeilen).</p>
+            </div>
+
+          </>)}
+
+          {/* ── Tab: Vorlagen ── */}
+          {activeTab === 'templates' && (<>
+
+            <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+              <h2 className="mb-1 text-lg font-semibold text-gray-900 dark:text-gray-100">Antwort-Vorlagen</h2>
+              <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">
+                Verfügbare Platzhalter: <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-700">{'{{MeinName}}'}</code> <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-700">{'{{MeineEmail}}'}</code> <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-700">{'{{Empfänger}}'}</code> <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-700">{'{{Betreff}}'}</code> <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-700">{'{{Datum}}'}</code>
+              </p>
+
+              <div className="mb-4 space-y-3">
+                {templates.map((tpl) => (
+                  <div key={tpl.id} className="rounded-lg border border-gray-100 p-4 dark:border-gray-700">
+                    {editingTpl?.id === tpl.id ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={editingTpl.name}
+                          onChange={(e) => setEditingTpl({ ...editingTpl, name: e.target.value })}
+                          className="w-full rounded border border-gray-300 px-2 py-1 text-sm font-medium dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                        />
+                        <textarea
+                          value={editingTpl.body}
+                          onChange={(e) => setEditingTpl({ ...editingTpl, body: e.target.value })}
+                          rows={5}
+                          className="w-full resize-y rounded border border-gray-300 px-2 py-1 font-mono text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              await updateTemplate(editingTpl.id, { name: editingTpl.name, body: editingTpl.body })
+                              setEditingTpl(null)
+                            }}
+                            className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                          >
+                            Speichern
+                          </button>
+                          <button
+                            onClick={() => setEditingTpl(null)}
+                            className="rounded bg-gray-200 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500"
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{tpl.name}</span>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => setEditingTpl({ ...tpl })}
+                              className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                            >
+                              Bearbeiten
+                            </button>
+                            <button
+                              onClick={() => deleteTemplate(tpl.id)}
+                              className="text-xs text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                            >
+                              Löschen
+                            </button>
+                          </div>
+                        </div>
+                        <pre className="whitespace-pre-wrap break-words font-mono text-xs text-gray-500 dark:text-gray-400 line-clamp-3">
+                          {tpl.body}
+                        </pre>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-dashed border-gray-300 p-4 dark:border-gray-600">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Neue Vorlage</p>
+                <input
+                  type="text"
+                  value={newTplName}
+                  onChange={(e) => setNewTplName(e.target.value)}
+                  placeholder="Name (z. B. Abwesenheitsnotiz)"
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                />
+                <textarea
+                  value={newTplBody}
+                  onChange={(e) => setNewTplBody(e.target.value)}
+                  rows={5}
+                  placeholder={"Guten Tag,\n\n...\n\nMit freundlichen Grüßen\n{{MeinName}}"}
+                  className="w-full resize-y rounded border border-gray-300 px-2 py-1.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                />
+                <button
+                  onClick={async () => {
+                    if (!newTplName.trim() || !newTplBody.trim()) return
+                    await createTemplate(newTplName.trim(), newTplBody.trim())
+                    setNewTplName('')
+                    setNewTplBody('')
+                  }}
+                  disabled={!newTplName.trim() || !newTplBody.trim()}
+                  className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Hinzufügen
+                </button>
+              </div>
             </div>
 
           </>)}
