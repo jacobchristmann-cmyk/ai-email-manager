@@ -46,6 +46,9 @@ export async function syncAccount(accountId: string): Promise<void> {
     const results = await syncMailboxes(imapConfig, inputs)
 
     let totalInserted = 0
+    // Collect important new emails for smart notification (unread, inbox, no newsletter)
+    const importantEmails: { from: string; subject: string }[] = []
+    const nonInboxPattern = /sent|gesendet|drafts|entwürfe|trash|papierkorb|junk|spam|archive|archiv/i
 
     for (let i = 0; i < results.length; i++) {
       const result = results[i]
@@ -75,6 +78,15 @@ export async function syncAccount(accountId: string): Promise<void> {
         }))
         const inserted = insertEmails(emails)
         totalInserted += inserted
+
+        // Collect important emails: unread, inbox mailbox, no List-Unsubscribe header
+        if (!nonInboxPattern.test(result.path)) {
+          for (const e of result.newEmails) {
+            if (!e.isSeen && !e.listUnsubscribe) {
+              importantEmails.push({ from: e.from, subject: e.subject })
+            }
+          }
+        }
       }
 
       updateLastSyncForMailbox(accountId, result.path, result.maxUid)
@@ -90,11 +102,19 @@ export async function syncAccount(accountId: string): Promise<void> {
       }
     }
 
-    if (totalInserted > 0 && Notification.isSupported()) {
-      const notification = new Notification({
-        title: 'Neue E-Mails',
-        body: `${totalInserted} neue E-Mail(s) in ${account.name}`
-      })
+    // Smart notification: only for important emails (no newsletters, no already-read)
+    if (importantEmails.length > 0 && Notification.isSupported()) {
+      let title: string
+      let body: string
+      if (importantEmails.length === 1) {
+        const senderName = importantEmails[0].from.match(/^([^<]+)</)?.[ 1]?.trim() || importantEmails[0].from
+        title = senderName
+        body = importantEmails[0].subject
+      } else {
+        title = `${importantEmails.length} neue E-Mails`
+        body = account.name
+      }
+      const notification = new Notification({ title, body })
       notification.on('click', () => {
         const win = BrowserWindow.getAllWindows()[0]
         if (win) { win.show(); win.focus() }
