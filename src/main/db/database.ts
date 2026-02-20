@@ -99,6 +99,12 @@ export function getDb(): Database.Database {
   if (!columns.some((c) => c.name === 'thread_id')) {
     db.exec('ALTER TABLE emails ADD COLUMN thread_id TEXT')
   }
+  if (!columns.some((c) => c.name === 'snoozed_until')) {
+    db.exec('ALTER TABLE emails ADD COLUMN snoozed_until TEXT')
+  }
+  if (!columns.some((c) => c.name === 'action_items')) {
+    db.exec('ALTER TABLE emails ADD COLUMN action_items TEXT')
+  }
 
   // Mailbox sync state table
   db.exec(`

@@ -1,20 +1,34 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useEmailStore } from '../stores/emailStore'
 import { useCategoryStore } from '../stores/categoryStore'
-import type { SmartReplyResult } from '../../shared/types'
+import type { ActionItem, SmartReplyResult } from '../../shared/types'
+import SnoozeDialog from './SnoozeDialog'
+
+function actionIcon(type: ActionItem['type']): string {
+  const map: Record<ActionItem['type'], string> = { reply: '✉️', deadline: '⏰', confirm: '✅', document: '📄', meeting: '📅', other: '📌' }
+  return map[type] ?? '📌'
+}
 
 export default function EmailDetail(): React.JSX.Element {
   const selectedEmailId = useEmailStore((s) => s.selectedEmailId)
   const emails = useEmailStore((s) => s.emails)
+  const snoozedEmails = useEmailStore((s) => s.snoozedEmails)
   const selectEmail = useEmailStore((s) => s.selectEmail)
   const openCompose = useEmailStore((s) => s.openCompose)
   const deleteEmail = useEmailStore((s) => s.deleteEmail)
   const setEmailCategory = useEmailStore((s) => s.setEmailCategory)
   const loadEmails = useEmailStore((s) => s.loadEmails)
   const isBodyLoading = useEmailStore((s) => s.isBodyLoading)
+  const isDetectingActions = useEmailStore((s) => s.isDetectingActions)
+  const snoozeEmail = useEmailStore((s) => s.snoozeEmail)
+  const unsnoozeEmail = useEmailStore((s) => s.unsnoozeEmail)
   const categories = useCategoryStore((s) => s.categories)
 
-  const email = selectedEmailId ? emails.find((e) => e.id === selectedEmailId) : undefined
+  const email = selectedEmailId
+    ? (emails.find((e) => e.id === selectedEmailId) ?? snoozedEmails.find((e) => e.id === selectedEmailId))
+    : undefined
+
+  const [showSnooze, setShowSnooze] = useState(false)
 
   // Thread: find related emails by threadId or matching subject (Re:/Fwd: stripped)
   const threadEmails = useMemo(() => {
@@ -66,7 +80,7 @@ export default function EmailDetail(): React.JSX.Element {
     else await window.electronAPI.emailUnstar(email.id)
   }
 
-  // Reset smart replies and unsubscribe state when email changes
+  // Reset smart replies, unsubscribe state and snooze dialog when email changes
   useEffect(() => {
     setSmartReplies(null)
     setReplyError(null)
@@ -74,6 +88,7 @@ export default function EmailDetail(): React.JSX.Element {
     setUnsubscribeError(null)
     setUnsubscribeLogId(null)
     setUnsubscribeConfirmed(false)
+    setShowSnooze(false)
   }, [selectedEmailId])
 
   if (!email) {
@@ -162,6 +177,12 @@ export default function EmailDetail(): React.JSX.Element {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {showSnooze && (
+        <SnoozeDialog
+          onSnooze={(until) => { snoozeEmail(email.id, until); setShowSnooze(false) }}
+          onClose={() => setShowSnooze(false)}
+        />
+      )}
       {/* Header */}
       <div className="border-b border-gray-200 p-4 dark:border-gray-700">
         <div className="flex items-start justify-between gap-4">
@@ -225,6 +246,23 @@ export default function EmailDetail(): React.JSX.Element {
                   </span>
                 )}
               </>
+            )}
+            {email.snoozeUntil ? (
+              <button
+                onClick={() => unsnoozeEmail(email.id)}
+                title="Wiedervorlage aufheben"
+                className="rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-400 dark:hover:bg-blue-900/20"
+              >
+                🕐 {new Date(email.snoozeUntil).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowSnooze(true)}
+                title="Zurückstellen"
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-500 hover:border-blue-400 hover:text-blue-500 dark:border-gray-600 dark:text-gray-400"
+              >
+                🕐
+              </button>
             )}
             <button
               onClick={handleToggleStar}
@@ -353,6 +391,29 @@ export default function EmailDetail(): React.JSX.Element {
           </div>
         )}
       </div>
+
+      {/* Action Items */}
+      {(email.actionItems.length > 0 || isDetectingActions) && (
+        <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Aufgaben</p>
+          {isDetectingActions && email.actionItems.length === 0 && (
+            <p className="text-xs text-gray-400">KI analysiert…</p>
+          )}
+          <div className="space-y-1.5">
+            {email.actionItems.map((item, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm">
+                <span className="text-base">{actionIcon(item.type)}</span>
+                <span className="flex-1 text-gray-700 dark:text-gray-200">{item.text}</span>
+                {item.dueDate && (
+                  <span className="shrink-0 text-xs text-orange-500">
+                    {new Date(item.dueDate).toLocaleDateString('de-DE')}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Attachments */}
       {email.hasAttachments && email.attachments.length > 0 && (

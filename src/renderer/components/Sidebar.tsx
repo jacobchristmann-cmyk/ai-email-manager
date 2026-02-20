@@ -39,6 +39,8 @@ export default function Sidebar(): React.JSX.Element {
   const loadAllUnreadCounts = useMailboxStore((s) => s.loadAllUnreadCounts)
   const getOrderedMailboxes = useMailboxStore((s) => s.getOrderedMailboxes)
   const reorderMailbox = useMailboxStore((s) => s.reorderMailbox)
+  const snoozedEmails = useEmailStore((s) => s.snoozedEmails)
+  const loadSnoozedEmails = useEmailStore((s) => s.loadSnoozedEmails)
   const navigate = useNavigate()
 
   const [expandedAccounts, setExpandedAccounts] = useState<Record<string, boolean>>({})
@@ -51,7 +53,8 @@ export default function Sidebar(): React.JSX.Element {
 
   useEffect(() => {
     loadAccounts()
-  }, [loadAccounts])
+    loadSnoozedEmails()
+  }, [loadAccounts, loadSnoozedEmails])
 
   useEffect(() => {
     if (accounts.length > 0) {
@@ -150,6 +153,20 @@ export default function Sidebar(): React.JSX.Element {
     <aside className="flex h-full flex-col overflow-hidden text-white" style={{ background: 'var(--sidebar-bg, #111827)' }}>
       <div className="p-4 text-lg font-bold tracking-tight">{appName}</div>
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2">
+        {/* Zurückgestellt (virtual mailbox) */}
+        <button
+          onClick={() => { setSelectedMailbox('__snoozed__'); navigate('/') }}
+          className={linkClass(selectedMailbox === '__snoozed__') + ' w-full'}
+        >
+          <span className="text-sm">🕐</span>
+          <span className="truncate">Zurückgestellt</span>
+          {snoozedEmails.length > 0 && (
+            <span className="ml-auto rounded-full bg-blue-600 px-2 py-0.5 text-xs font-medium">
+              {snoozedEmails.length}
+            </span>
+          )}
+        </button>
+
         {accounts.map((account) => {
           const ordered = mailboxes[account.id] ? getOrderedMailboxes(account.id) : []
           return (

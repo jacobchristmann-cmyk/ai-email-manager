@@ -1,13 +1,36 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, Notification, ipcMain } from 'electron'
 import { getSetting } from '../db/settingsDao'
 import { syncAllAccounts } from './syncService'
+import { getEmailsDueToWakeUp, unsnoozeEmail } from '../db/emailDao'
 
 let timer: NodeJS.Timeout | null = null
+let wakeupTimer: NodeJS.Timeout | null = null
+
+function checkSnoozeWakeups(): void {
+  const wakeups = getEmailsDueToWakeUp()
+  for (const email of wakeups) {
+    unsnoozeEmail(email.id)
+    if (Notification.isSupported()) {
+      const n = new Notification({ title: 'Wiedervorlage', body: email.subject })
+      n.on('click', () => { BrowserWindow.getAllWindows()[0]?.show() })
+      n.show()
+    }
+  }
+  if (wakeups.length > 0) {
+    const ids = wakeups.map((e) => e.id)
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('email:snoozed-wakeup', ids)
+    }
+  }
+}
 
 export function startScheduler(): void {
   const raw = getSetting('syncInterval')
   const minutes = raw ? parseInt(raw, 10) : 0
   setTimer(minutes)
+
+  // Snooze wakeup check every 60 seconds
+  wakeupTimer = setInterval(checkSnoozeWakeups, 60_000)
 
   // Trigger initial sync only after the renderer signals it is fully mounted
   // and has registered its sync:status listener — avoids the fragile 2s timeout.

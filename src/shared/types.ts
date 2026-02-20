@@ -89,6 +89,14 @@ export interface Email {
   attachments: Attachment[]
   inReplyTo: string | null
   threadId: string | null
+  snoozeUntil: string | null
+  actionItems: ActionItem[]
+}
+
+export interface ActionItem {
+  type: 'reply' | 'deadline' | 'confirm' | 'document' | 'meeting' | 'other'
+  text: string
+  dueDate: string | null
 }
 
 export interface EmailBodyUpdate {
@@ -270,6 +278,12 @@ export interface ElectronAPI {
   aiOllamaPing: (url: string) => Promise<IpcResult<boolean>>
   // Signature detection
   accountDetectSignature: (accountId?: string) => Promise<IpcResult<string | null>>
+  // Snooze
+  emailSnooze: (id: string, until: string) => Promise<IpcResult<void>>
+  emailUnsnooze: (id: string) => Promise<IpcResult<void>>
+  emailListSnoozed: () => Promise<IpcResult<Email[]>>
+  emailDetectActions: (id: string) => Promise<IpcResult<ActionItem[]>>
+  onSnoozeWakeup: (callback: (ids: string[]) => void) => () => void
   // Lifecycle
   notifyReady: () => void
 }
@@ -327,6 +341,11 @@ export type IpcChannels =
   | 'ai:assistant-chat'
   | 'ai:assistant-briefing'
   | 'account:detect-signature'
+  | 'email:snooze'
+  | 'email:unsnooze'
+  | 'email:list-snoozed'
+  | 'email:detect-actions'
+  | 'email:snoozed-wakeup'
 
 // === Window augmentation ===
 

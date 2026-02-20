@@ -5,6 +5,7 @@ import { useChatStore } from '../stores/chatStore'
 import { useEmailStore } from '../stores/emailStore'
 import { useMailboxStore } from '../stores/mailboxStore'
 import { useSettingsStore } from '../stores/settingsStore'
+import SnoozeDialog from './SnoozeDialog'
 
 interface EmailListItemProps {
   email: Email
@@ -36,8 +37,11 @@ function EmailListItem({
   const emailDensity = useSettingsStore((s) => s.settings.emailDensity || 'comfortable')
   const densityPy = emailDensity === 'compact' ? 'py-1.5' : emailDensity === 'spacious' ? 'py-5' : 'py-3'
 
+  const snoozeEmail = useEmailStore((s) => s.snoozeEmail)
+
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showMoveSubmenu, setShowMoveSubmenu] = useState(false)
+  const [showSnooze, setShowSnooze] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const category = useMemo(
@@ -144,6 +148,9 @@ function EmailListItem({
               {email.from.replace(/<[^>]+>/, '').trim() || email.from}
             </span>
             <div className="flex shrink-0 items-center gap-1">
+              {email.actionItems.length > 0 && (
+                <span className="h-2 w-2 rounded-full bg-orange-400" title={`${email.actionItems.length} Aufgabe(n)`} />
+              )}
               {email.hasAttachments && (
                 <span className="text-xs text-gray-400">📎</span>
               )}
@@ -227,6 +234,15 @@ function EmailListItem({
             )}
           </div>
 
+          {/* Snooze */}
+          <button
+            onClick={() => { closeMenu(); setShowSnooze(true) }}
+            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            <span className="w-4 text-center text-xs">🕐</span>
+            Zurückstellen
+          </button>
+
           {/* Move to trash */}
           <button
             onClick={handleMoveToTrash}
@@ -260,6 +276,13 @@ function EmailListItem({
             KI-Analyse
           </button>
         </div>
+      )}
+
+      {showSnooze && (
+        <SnoozeDialog
+          onSnooze={(until) => snoozeEmail(email.id, until)}
+          onClose={() => setShowSnooze(false)}
+        />
       )}
     </>
   )

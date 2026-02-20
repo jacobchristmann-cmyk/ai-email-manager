@@ -14,6 +14,8 @@ import InboxBriefing from '../components/InboxBriefing'
 
 export default function Inbox(): React.JSX.Element {
   const { loadEmails, handleSyncStatus, openCompose, composeOpen } = useEmailStore()
+  const selectedMailbox = useEmailStore((s) => s.selectedMailbox)
+  const isSnoozedView = selectedMailbox === '__snoozed__'
   const { loadAccounts } = useAccountStore()
   const { loadCategories } = useCategoryStore()
   const isAssistantOpen = useChatStore((s) => s.isOpen)
@@ -81,7 +83,7 @@ export default function Inbox(): React.JSX.Element {
 
       {/* Top bar */}
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Inbox</h1>
+        <h1 className="text-2xl font-bold">{isSnoozedView ? '🕐 Zurückgestellt' : 'Inbox'}</h1>
         <div className="flex items-center gap-3">
           <button
             onClick={() => openCompose()}

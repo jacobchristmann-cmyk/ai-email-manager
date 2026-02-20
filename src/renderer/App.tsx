@@ -25,6 +25,12 @@ export default function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    return window.electronAPI.onSnoozeWakeup((ids) => {
+      useEmailStore.getState().handleSnoozeWakeup(ids)
+    })
+  }, [])
+
+  useEffect(() => {
     const theme = settings.theme || 'light'
     if (theme === 'dark') {
       document.documentElement.classList.add('dark')

@@ -111,6 +111,17 @@ const electronAPI: ElectronAPI = {
   aiOllamaPing: (url) => ipcRenderer.invoke('ai:ollama-ping', url),
   accountDetectSignature: (accountId?) => ipcRenderer.invoke('account:detect-signature', accountId),
 
+  // Snooze & Action Detection
+  emailSnooze: (id, until) => ipcRenderer.invoke('email:snooze', id, until),
+  emailUnsnooze: (id) => ipcRenderer.invoke('email:unsnooze', id),
+  emailListSnoozed: () => ipcRenderer.invoke('email:list-snoozed'),
+  emailDetectActions: (id) => ipcRenderer.invoke('email:detect-actions', id),
+  onSnoozeWakeup: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, ids: unknown): void => callback(ids as string[])
+    ipcRenderer.on('email:snoozed-wakeup', handler)
+    return () => ipcRenderer.removeListener('email:snoozed-wakeup', handler)
+  },
+
   // Lifecycle
   notifyReady: () => ipcRenderer.send('renderer:ready')
 }

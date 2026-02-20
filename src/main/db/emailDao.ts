@@ -25,6 +25,8 @@ interface EmailRow {
   category_id: string | null
   created_at: string
   has_body: number | undefined
+  snoozed_until: string | null
+  action_items: string | null
 }
 
 function rowToEmail(row: EmailRow): Email {
@@ -54,6 +56,8 @@ function rowToEmail(row: EmailRow): Email {
     attachments,
     inReplyTo: row.in_reply_to ?? null,
     threadId: row.thread_id ?? null,
+    snoozeUntil: row.snoozed_until ?? null,
+    actionItems: row.action_items ? JSON.parse(row.action_items) : [],
   }
 }
 
@@ -112,7 +116,7 @@ const ENVELOPE_COLS = `
   SUBSTR(body, 1, 150) as body,
   NULL as body_html,
   list_unsubscribe, list_unsubscribe_post,
-  is_read, category_id, created_at,
+  is_read, category_id, created_at, snoozed_until,
   CASE WHEN body IS NOT NULL AND body != '' THEN 1 ELSE 0 END as has_body
 `
 
@@ -120,12 +124,12 @@ export function listEmails(accountId?: string, mailbox?: string): Email[] {
   const db = getDb()
   const limit = 500
   if (accountId && mailbox) {
-    return (db.prepare(`SELECT ${ENVELOPE_COLS} FROM emails WHERE account_id = ? AND mailbox = ? ORDER BY date DESC LIMIT ?`).all(accountId, mailbox, limit) as EmailRow[]).map(rowToEmail)
+    return (db.prepare(`SELECT ${ENVELOPE_COLS} FROM emails WHERE account_id = ? AND mailbox = ? AND (snoozed_until IS NULL OR snoozed_until <= datetime('now')) ORDER BY date DESC LIMIT ?`).all(accountId, mailbox, limit) as EmailRow[]).map(rowToEmail)
   }
   if (accountId) {
-    return (db.prepare(`SELECT ${ENVELOPE_COLS} FROM emails WHERE account_id = ? ORDER BY date DESC LIMIT ?`).all(accountId, limit) as EmailRow[]).map(rowToEmail)
+    return (db.prepare(`SELECT ${ENVELOPE_COLS} FROM emails WHERE account_id = ? AND (snoozed_until IS NULL OR snoozed_until <= datetime('now')) ORDER BY date DESC LIMIT ?`).all(accountId, limit) as EmailRow[]).map(rowToEmail)
   }
-  return (db.prepare(`SELECT ${ENVELOPE_COLS} FROM emails ORDER BY date DESC LIMIT ?`).all(limit) as EmailRow[]).map(rowToEmail)
+  return (db.prepare(`SELECT ${ENVELOPE_COLS} FROM emails WHERE (snoozed_until IS NULL OR snoozed_until <= datetime('now')) ORDER BY date DESC LIMIT ?`).all(limit) as EmailRow[]).map(rowToEmail)
 }
 
 /** Returns the most recent emails without a fetched body, grouped for prefetching. */
@@ -469,6 +473,35 @@ export function listStarredEmails(): Email[] {
   const db = getDb()
   const rows = db.prepare('SELECT * FROM emails WHERE is_starred = 1 ORDER BY date DESC').all() as EmailRow[]
   return rows.map(rowToEmail)
+}
+
+// === Snooze ===
+
+export function snoozeEmail(id: string, until: string): void {
+  getDb().prepare('UPDATE emails SET snoozed_until = ? WHERE id = ?').run(until, id)
+}
+
+export function unsnoozeEmail(id: string): void {
+  getDb().prepare('UPDATE emails SET snoozed_until = NULL WHERE id = ?').run(id)
+}
+
+export function listSnoozedEmails(): Email[] {
+  const db = getDb()
+  const rows = db.prepare(
+    `SELECT ${ENVELOPE_COLS} FROM emails WHERE snoozed_until > datetime('now') ORDER BY snoozed_until ASC`
+  ).all() as EmailRow[]
+  return rows.map(rowToEmail)
+}
+
+export function getEmailsDueToWakeUp(): { id: string; account_id: string; subject: string }[] {
+  const db = getDb()
+  return db.prepare(
+    `SELECT id, account_id, subject FROM emails WHERE snoozed_until IS NOT NULL AND snoozed_until <= datetime('now')`
+  ).all() as { id: string; account_id: string; subject: string }[]
+}
+
+export function updateEmailActionItems(id: string, items: import('../../shared/types').ActionItem[]): void {
+  getDb().prepare('UPDATE emails SET action_items = ? WHERE id = ?').run(JSON.stringify(items), id)
 }
 
 // === Signature Detection ===

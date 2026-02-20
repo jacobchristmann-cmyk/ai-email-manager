@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Email, EmailBodyUpdate, EmailSearchParams, EmailSend, SyncStatus } from '../../shared/types'
+import type { ActionItem, Email, EmailBodyUpdate, EmailSearchParams, EmailSend, SyncStatus } from '../../shared/types'
 
 interface EmailState {
   emails: Email[]
@@ -73,6 +73,14 @@ interface EmailState {
   bulkDelete: () => Promise<void>
   // Body push updates
   refreshEmailBodies: (updates: EmailBodyUpdate[]) => void
+  // Snooze
+  snoozedEmails: Email[]
+  isDetectingActions: boolean
+  snoozeEmail: (id: string, until: string) => Promise<void>
+  unsnoozeEmail: (id: string) => Promise<void>
+  loadSnoozedEmails: () => Promise<void>
+  detectActions: (id: string) => Promise<ActionItem[]>
+  handleSnoozeWakeup: (ids: string[]) => void
 }
 
 export const useEmailStore = create<EmailState>((set, get) => ({
@@ -100,6 +108,8 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   isSending: false,
   isBodyLoading: false,
   selectedIds: new Set<string>(),
+  snoozedEmails: [],
+  isDetectingActions: false,
 
   loadEmails: async (accountId?, mailbox?) => {
     set({ isLoading: true })
@@ -138,8 +148,14 @@ export const useEmailStore = create<EmailState>((set, get) => ({
         const result = await window.electronAPI.emailGet(id)
         if (result.success && result.data && get().selectedEmailId === id) {
           set((state) => ({
-            emails: state.emails.map((e) => (e.id === id ? { ...e, ...result.data!, hasBody: true } : e))
+            emails: state.emails.map((e) => (e.id === id ? { ...e, ...result.data!, hasBody: true } : e)),
+            snoozedEmails: state.snoozedEmails.map((e) => (e.id === id ? { ...e, ...result.data!, hasBody: true } : e))
           }))
+          // Auto-detect actions if body is available and not yet cached
+          const updated = get().emails.find((e) => e.id === id)
+          if (updated?.hasBody && updated.actionItems.length === 0) {
+            get().detectActions(id)
+          }
         }
       } finally {
         if (get().selectedEmailId === id) set({ isBodyLoading: false })
@@ -244,8 +260,12 @@ export const useEmailStore = create<EmailState>((set, get) => ({
 
   setSelectedMailbox: (mailbox) => {
     set({ selectedMailbox: mailbox, selectedEmailId: null })
-    const accountId = get().selectedAccountId ?? undefined
-    get().loadEmails(accountId, mailbox ?? undefined)
+    if (mailbox === '__snoozed__') {
+      get().loadSnoozedEmails()
+    } else {
+      const accountId = get().selectedAccountId ?? undefined
+      get().loadEmails(accountId, mailbox ?? undefined)
+    }
   },
 
   setSearchQuery: (query) => {
@@ -257,7 +277,8 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   },
 
   filteredEmails: () => {
-    const { emails, searchQuery, selectedCategoryId, aiSearchResults } = get()
+    const { emails, searchQuery, selectedCategoryId, aiSearchResults, selectedMailbox, snoozedEmails } = get()
+    if (selectedMailbox === '__snoozed__') return snoozedEmails
     let filtered = emails
 
     if (selectedCategoryId) {
@@ -475,5 +496,44 @@ export const useEmailStore = create<EmailState>((set, get) => ({
         return { ...e, body: update.body, bodyHtml: update.bodyHtml, hasBody: true }
       })
     }))
+  },
+
+  snoozeEmail: async (id, until) => {
+    await window.electronAPI.emailSnooze(id, until)
+    set((state) => ({
+      emails: state.emails.filter((e) => e.id !== id),
+      selectedEmailId: state.selectedEmailId === id ? null : state.selectedEmailId
+    }))
+  },
+
+  unsnoozeEmail: async (id) => {
+    await window.electronAPI.emailUnsnooze(id)
+    set((state) => ({ snoozedEmails: state.snoozedEmails.filter((e) => e.id !== id) }))
+    get().loadEmails(get().selectedAccountId ?? undefined, get().selectedMailbox ?? undefined)
+  },
+
+  loadSnoozedEmails: async () => {
+    const result = await window.electronAPI.emailListSnoozed()
+    if (result.success) set({ snoozedEmails: result.data! })
+  },
+
+  detectActions: async (id) => {
+    set({ isDetectingActions: true })
+    const result = await window.electronAPI.emailDetectActions(id)
+    if (result.success && result.data) {
+      const items = result.data
+      set((state) => ({
+        emails: state.emails.map((e) => (e.id === id ? { ...e, actionItems: items } : e))
+      }))
+      set({ isDetectingActions: false })
+      return items
+    }
+    set({ isDetectingActions: false })
+    return []
+  },
+
+  handleSnoozeWakeup: (ids) => {
+    set((state) => ({ snoozedEmails: state.snoozedEmails.filter((e) => !ids.includes(e.id)) }))
+    get().loadEmails(get().selectedAccountId ?? undefined, get().selectedMailbox ?? undefined)
   }
 }))

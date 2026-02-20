@@ -7,8 +7,10 @@ import {
   updateEmailMailbox, insertUnsubscribeLog, updateUnsubscribeStatus, listUnsubscribeLogs,
   searchEmails, updateEmailBody, markAllReadInMailbox,
   starEmail, unstarEmail, bulkMarkRead, bulkMarkUnread, bulkDelete,
-  getContactSuggestions, updateEmailAttachments, getSentEmailBodies
+  getContactSuggestions, updateEmailAttachments, getSentEmailBodies,
+  snoozeEmail, unsnoozeEmail, listSnoozedEmails
 } from './db/emailDao'
+import { detectEmailActions } from './ai/actionsService'
 import { listMailboxes, createMailbox, moveEmail, fetchEmailBody, markEmailSeen, markEmailUnseen, appendToMailbox } from './email/imapClient'
 import {
   getAllSettings, setMultipleSettings
@@ -764,6 +766,24 @@ export function registerIpcHandlers(): void {
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Fehler bei der Signaturer kennung')
     }
+  })
+
+  // === Snooze & Action Detection ===
+
+  ipcMain.handle('email:snooze', async (_e, id: string, until: string) => {
+    try { snoozeEmail(id, until); return ok(undefined) } catch (err) { return fail(String(err)) }
+  })
+
+  ipcMain.handle('email:unsnooze', async (_e, id: string) => {
+    try { unsnoozeEmail(id); return ok(undefined) } catch (err) { return fail(String(err)) }
+  })
+
+  ipcMain.handle('email:list-snoozed', async () => {
+    try { return ok(listSnoozedEmails()) } catch (err) { return fail(String(err)) }
+  })
+
+  ipcMain.handle('email:detect-actions', async (_e, id: string) => {
+    try { return ok(await detectEmailActions(id)) } catch (err) { return fail(String(err)) }
   })
 }
 
