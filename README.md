@@ -6,7 +6,11 @@ Eine KI-gestützte Desktop-E-Mail-Anwendung für macOS, gebaut mit Electron, Rea
 
 ## Aktueller Stand
 
-Die App ist voll funktionsfähig und produktionsreif für den persönlichen Einsatz. Alle geplanten Core-Features sind implementiert. Die App läuft lokal auf dem Desktop, speichert alle Daten in einer lokalen SQLite-Datenbank und kommuniziert direkt per IMAP/SMTP mit E-Mail-Servern – keine Daten verlassen das Gerät (außer an die KI-API deiner Wahl).
+Die App ist voll funktionsfähig und produktionsreif für den persönlichen Einsatz. Alle geplanten Core- und KI-Features sind implementiert. Die App läuft lokal auf dem Desktop, speichert alle Daten in einer lokalen SQLite-Datenbank und kommuniziert direkt per IMAP/SMTP mit E-Mail-Servern – keine Daten verlassen das Gerät (außer an die KI-API deiner Wahl).
+
+**Enthaltene KI-gestützte Workflows:** Automatische Kategorisierung, Smart-Reply, semantische Suche, Inbox-Briefing, Aktions-Erkennung, Abmelde-Automatisierung sowie ein interaktiver Chat-Assistent mit Postfach-Kontext.
+
+**Intelligente Zeitplanung:** Snooze/Wiedervorlage, Follow-up-Erinnerungen (inkl. automatischer Reply-Erkennung) und Prioritäts-Inbox ermöglichen ein vollständiges GTD-ähnliches E-Mail-Management ohne externe Tools.
 
 ---
 
@@ -27,8 +31,15 @@ Die App ist voll funktionsfähig und produktionsreif für den persönlichen Eins
 - **Tastaturkürzel** – J/K oder Pfeiltasten zum Navigieren, N (neu), R (antworten), F (weiterleiten), D (löschen), / (Suche)
 - **Flag/Stern-System** – E-Mails mit einem Stern markieren (sichtbar in Liste und Detail, persistiert in DB)
 - **Bulk-Aktionen** – Mehrfachauswahl per Checkbox (Hover), Toolbar mit Gelesen/Ungelesen/Löschen und "Alle auswählen"
-- **Kontextmenü** – Rechtsklick auf E-Mail: Gelesen markieren, Verschieben, Papierkorb, Löschen, KI-Analyse
+- **Kontextmenü** – Rechtsklick auf E-Mail: Gelesen markieren, Verschieben, Papierkorb, Löschen, KI-Analyse, Zurückstellen, Nachfassen
 - **Anhang-Indikator** – 📎 Symbol in der E-Mail-Liste bei E-Mails mit Anhängen
+- **Postfächer sortieren** – Drag & Drop in der Sidebar zum Umsortieren der Postfächer je Konto
+- **Prioritäts-Inbox** – Virtuelle Ansicht mit heuristisch gewichteten E-Mails (bewertet Kategorie, Sternmarkierung, Aktionen, Dringlichkeit, Aktualität)
+
+### Intelligente Organisation
+- **Snooze / Wiedervorlage** – E-Mails temporär ausblenden und zu einem frei wählbaren Zeitpunkt wieder einblenden lassen (Heute Abend, Morgen früh, In 3 Tagen, Nächste Woche oder benutzerdefiniert); Desktop-Benachrichtigung beim Wakeup
+- **Follow-up Erinnerungen** – Erinnerung setzen, wenn auf eine gesendete E-Mail keine Antwort eingeht; automatische Erkennung per lokaler DB-Abfrage (`In-Reply-To`); Benachrichtigung und virtuelle "Nachfassen"-Ansicht in der Sidebar
+- **Desktop-Benachrichtigungen** – Native macOS-Benachrichtigungen bei neuen E-Mails, Snooze-Wakeup und fälligen Follow-ups (Electron Notification API)
 
 ### Verfassen
 - **Compose Modal** – Vollständiges Verfassen-Fenster mit Von/An/CC/BCC/Betreff/Body
@@ -49,6 +60,7 @@ Die App ist voll funktionsfähig und produktionsreif für den persönlichen Eins
 - **Abmelde-Automatisierung** – "Abmelden"-Button bei Newsletter-E-Mails: nutzt `List-Unsubscribe` Header oder öffnet den Link
 - **KI-Assistent (Chat)** – Seitenleiste mit einem KI-Assistenten, der Kontext über den Posteingang hat; kann einzelne E-Mails analysieren
 - **Inbox-Briefing** – Tagesbriefing mit Zusammenfassung ungelesener E-Mails, Fristen und Prioritäten
+- **KI-Aktions-Erkennung** – Beim Öffnen einer E-Mail erkennt die KI automatisch konkrete Aufgaben (Antworten, Deadlines, Termine, Dokumente bestätigen usw.); Ergebnisse werden in der DB gecacht und als Badge in der E-Mail-Liste angezeigt
 
 ### Thread-Ansicht
 - **Konversations-Gruppierung** – Verwandte E-Mails werden in einer Konversations-Leiste unterhalb der Detail-Ansicht angezeigt (gruppiert nach `In-Reply-To`, Thread-ID oder Betreff)
@@ -100,19 +112,21 @@ src/
 │   ├── ipc.ts             # Alle IPC-Handler (Brücke Main ↔ Renderer)
 │   ├── db/                # SQLite DAOs
 │   │   ├── database.ts    # Schema, Migrationen
-│   │   ├── emailDao.ts    # E-Mail CRUD, Suche, Bulk-Ops, Stern, Anhänge
+│   │   ├── emailDao.ts    # E-Mail CRUD, Suche, Bulk-Ops, Stern, Snooze, Aktionen
 │   │   ├── accountDao.ts  # Konto-Verwaltung
 │   │   ├── categoryDao.ts # Kategorie-Verwaltung
+│   │   ├── followUpDao.ts # Follow-up-Erinnerungen mit Reply-Erkennung
 │   │   └── settingsDao.ts # App-Einstellungen (Key-Value)
 │   ├── email/             # IMAP/SMTP
 │   │   ├── imapClient.ts  # IMAP-Operationen (sync, fetch, move, append, ...)
 │   │   ├── imapPool.ts    # Persistente IMAP-Verbindung pro Konto (Mutex + Idle-Timeout)
 │   │   ├── smtpClient.ts  # SMTP-Versand + Raw-Message für IMAP APPEND
-│   │   ├── syncService.ts # Sync-Logik (inkrementell, Seen-Flag-Abgleich)
-│   │   ├── prefetchService.ts # Hintergrund-Body-Prefetch mit Push-Event
-│   │   └── syncScheduler.ts   # Automatischer Sync-Timer
+│   │   ├── syncService.ts # Sync-Logik (inkrementell, Seen-Flag-Abgleich, Benachrichtigungen)
+│   │   ├── prefetchService.ts # Hintergrund-Body-Prefetch mit Push-Event an Renderer
+│   │   └── syncScheduler.ts   # Automatischer Sync-Timer + Snooze/Follow-up-Wakeup (60s)
 │   └── ai/                # KI-Services
 │       ├── assistantService.ts  # Chat, Analyse, Briefing
+│       ├── actionsService.ts    # Aktions-Erkennung (Aufgaben aus E-Mail-Inhalt)
 │       ├── classifyService.ts   # E-Mail-Kategorisierung
 │       ├── replyService.ts      # Smart-Reply-Generierung
 │       ├── searchService.ts     # Semantische Suche
