@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import Tooltip from './Tooltip'
 import { useEmailStore } from '../stores/emailStore'
 import { useAccountStore } from '../stores/accountStore'
 import { useCategoryStore } from '../stores/categoryStore'
@@ -135,17 +136,18 @@ export default function InboxToolbar(): React.JSX.Element {
 
         {/* Search with AI toggle */}
         <div className="relative flex flex-1 items-center gap-1">
-          <button
-            onClick={handleToggleAiSearch}
-            title={aiSearchMode ? 'Zur normalen Suche wechseln' : 'KI-Suche aktivieren'}
-            className={`rounded-lg px-2 py-1.5 text-xs font-bold transition-colors ${
-              aiSearchMode
-                ? 'bg-purple-600 text-white'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500'
-            }`}
-          >
-            KI
-          </button>
+          <Tooltip text={aiSearchMode ? 'Zur normalen Suche wechseln' : 'KI-Suche aktivieren (semantische Suche via KI)'}>
+            <button
+              onClick={handleToggleAiSearch}
+              className={`rounded-lg px-2 py-1.5 text-xs font-bold transition-colors ${
+                aiSearchMode
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500'
+              }`}
+            >
+              KI
+            </button>
+          </Tooltip>
           <div className="relative flex-1">
             <input
               type="text"
@@ -170,51 +172,57 @@ export default function InboxToolbar(): React.JSX.Element {
             </span>
           </div>
           {aiSearchMode && aiSearchResults && (
-            <button
-              onClick={handleClearAiSearch}
-              title="KI-Ergebnisse zurücksetzen"
-              className="rounded-lg bg-gray-200 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500"
-            >
-              ✕
-            </button>
+            <Tooltip text="KI-Ergebnisse zurücksetzen">
+              <button
+                onClick={handleClearAiSearch}
+                className="rounded-lg bg-gray-200 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500"
+              >
+                ✕
+              </button>
+            </Tooltip>
           )}
         </div>
 
         {/* Advanced filter toggle */}
-        <button
-          onClick={toggleAdvancedSearch}
-          title={isAdvancedSearchOpen ? 'Filter ausblenden' : 'Erweiterte Filter'}
-          className={`rounded-lg px-2 py-1.5 text-xs font-bold transition-colors ${
-            isAdvancedSearchActive
-              ? 'bg-blue-600 text-white'
-              : isAdvancedSearchOpen
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500'
-          }`}
-        >
-          Filter
-        </button>
+        <Tooltip text={isAdvancedSearchOpen ? 'Filter ausblenden' : 'Erweiterte Filter: Von, An, Betreff, Datum, Status'}>
+          <button
+            onClick={toggleAdvancedSearch}
+            className={`rounded-lg px-2 py-1.5 text-xs font-bold transition-colors ${
+              isAdvancedSearchActive
+                ? 'bg-blue-600 text-white'
+                : isAdvancedSearchOpen
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500'
+            }`}
+          >
+            Filter
+          </button>
+        </Tooltip>
 
         {/* AI Classify button */}
-        <button
-          onClick={handleClassify}
-          disabled={isClassifying}
-          className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-        >
-          {isClassifying ? 'Klassifiziere...' : 'KI Kategorisieren'}
-        </button>
+        <Tooltip text="Alle unkategorisierten E-Mails automatisch per KI klassifizieren">
+          <button
+            onClick={handleClassify}
+            disabled={isClassifying}
+            className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+          >
+            {isClassifying ? 'Klassifiziere...' : 'KI Kategorisieren'}
+          </button>
+        </Tooltip>
 
         {/* AI Assistant toggle */}
-        <button
-          onClick={toggleAssistant}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            isAssistantOpen
-              ? 'bg-purple-700 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
-          }`}
-        >
-          KI-Assistent
-        </button>
+        <Tooltip text="KI-Assistent öffnen — analysiert Postfach, beantwortet Fragen und erstellt Tages-Briefing">
+          <button
+            onClick={toggleAssistant}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              isAssistantOpen
+                ? 'bg-purple-700 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
+            }`}
+          >
+            KI-Assistent
+          </button>
+        </Tooltip>
       </div>
 
       {/* Advanced search filters */}

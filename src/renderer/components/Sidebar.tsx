@@ -5,6 +5,7 @@ import { useEmailStore } from '../stores/emailStore'
 import { useAccountStore } from '../stores/accountStore'
 import { useMailboxStore } from '../stores/mailboxStore'
 import type { Mailbox } from '../../shared/types'
+import Tooltip from './Tooltip'
 
 interface ContextMenuState {
   x: number
@@ -157,46 +158,53 @@ export default function Sidebar(): React.JSX.Element {
       <div className="p-4 text-lg font-bold tracking-tight">{appName}</div>
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2">
         {/* Prioritäts-Inbox (virtual mailbox) */}
-        <button
-          onClick={() => { setSelectedMailbox('__priority__'); navigate('/') }}
-          className={linkClass(selectedMailbox === '__priority__') + ' w-full'}
-        >
-          <span className="text-sm">⭐</span>
-          <span className="truncate">Prioritäts-Inbox</span>
-        </button>
+        <Tooltip text="Wichtige E-Mails nach Priorität sortiert" placement="right">
+          <button
+            onClick={() => { setSelectedMailbox('__priority__'); navigate('/') }}
+            className={linkClass(selectedMailbox === '__priority__') + ' w-full'}
+          >
+            <span className="text-sm">⭐</span>
+            <span className="truncate">Prioritäts-Inbox</span>
+          </button>
+        </Tooltip>
 
         {/* Zurückgestellt (virtual mailbox) */}
-        <button
-          onClick={() => { setSelectedMailbox('__snoozed__'); navigate('/') }}
-          className={linkClass(selectedMailbox === '__snoozed__') + ' w-full'}
-        >
-          <span className="text-sm">🕐</span>
-          <span className="truncate">Zurückgestellt</span>
-          {snoozedEmails.length > 0 && (
-            <span className="ml-auto rounded-full bg-blue-600 px-2 py-0.5 text-xs font-medium">
-              {snoozedEmails.length}
-            </span>
-          )}
-        </button>
+        <Tooltip text="Zurückgestellte E-Mails — erscheinen automatisch wieder zum gesetzten Zeitpunkt" placement="right">
+          <button
+            onClick={() => { setSelectedMailbox('__snoozed__'); navigate('/') }}
+            className={linkClass(selectedMailbox === '__snoozed__') + ' w-full'}
+          >
+            <span className="text-sm">🕐</span>
+            <span className="truncate">Zurückgestellt</span>
+            {snoozedEmails.length > 0 && (
+              <span className="ml-auto rounded-full bg-blue-600 px-2 py-0.5 text-xs font-medium">
+                {snoozedEmails.length}
+              </span>
+            )}
+          </button>
+        </Tooltip>
 
         {/* Nachfassen (follow-up virtual mailbox) */}
-        <button
-          onClick={() => { setSelectedMailbox('__followup__'); navigate('/') }}
-          className={linkClass(selectedMailbox === '__followup__') + ' w-full'}
-        >
-          <span className="text-sm">🔔</span>
-          <span className="truncate">Nachfassen</span>
-          {followUps.length > 0 && (
-            <span className="ml-auto rounded-full bg-orange-500 px-2 py-0.5 text-xs font-medium">
-              {followUps.length}
-            </span>
-          )}
-        </button>
+        <Tooltip text="E-Mails auf die du noch wartest — Erinnerung wenn keine Antwort kommt" placement="right">
+          <button
+            onClick={() => { setSelectedMailbox('__followup__'); navigate('/') }}
+            className={linkClass(selectedMailbox === '__followup__') + ' w-full'}
+          >
+            <span className="text-sm">🔔</span>
+            <span className="truncate">Nachfassen</span>
+            {followUps.length > 0 && (
+              <span className="ml-auto rounded-full bg-orange-500 px-2 py-0.5 text-xs font-medium">
+                {followUps.length}
+              </span>
+            )}
+          </button>
+        </Tooltip>
 
         {accounts.map((account) => {
           const ordered = mailboxes[account.id] ? getOrderedMailboxes(account.id) : []
           return (
             <div key={account.id}>
+              <Tooltip text={expandedAccounts[account.id] ? 'Konto einklappen' : 'Konto ausklappen'} placement="right">
               <button
                 onClick={() => toggleAccount(account.id)}
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
@@ -204,6 +212,7 @@ export default function Sidebar(): React.JSX.Element {
                 <span className="text-xs">{expandedAccounts[account.id] ? '\u25BC' : '\u25B6'}</span>
                 <span className="truncate">{account.name}</span>
               </button>
+              </Tooltip>
               {expandedAccounts[account.id] && ordered.length > 0 && (
                 <div className="ml-3 space-y-0.5">
                   {ordered.map((mb, idx) => {

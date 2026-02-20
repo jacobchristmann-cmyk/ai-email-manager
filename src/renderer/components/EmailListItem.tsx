@@ -7,6 +7,7 @@ import { useMailboxStore } from '../stores/mailboxStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import SnoozeDialog from './SnoozeDialog'
 import FollowUpDialog from './FollowUpDialog'
+import Tooltip from './Tooltip'
 
 interface EmailListItemProps {
   email: Email
@@ -182,17 +183,18 @@ function EmailListItem({
         </button>
 
         {/* Star button */}
-        <button
-          onClick={(e) => { e.stopPropagation(); toggleStar(email.id) }}
-          className={`absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-sm transition-colors ${
-            email.isStarred
-              ? 'text-yellow-400'
-              : 'text-gray-200 opacity-0 hover:text-yellow-400 group-hover:opacity-100 dark:text-gray-600'
-          }`}
-          title={email.isStarred ? 'Stern entfernen' : 'Mit Stern markieren'}
-        >
-          {email.isStarred ? '★' : '☆'}
-        </button>
+        <Tooltip text={email.isStarred ? 'Stern entfernen' : 'Mit Stern markieren'}>
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleStar(email.id) }}
+            className={`absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-sm transition-colors ${
+              email.isStarred
+                ? 'text-yellow-400'
+                : 'text-gray-200 opacity-0 hover:text-yellow-400 group-hover:opacity-100 dark:text-gray-600'
+            }`}
+          >
+            {email.isStarred ? '★' : '☆'}
+          </button>
+        </Tooltip>
       </div>
 
       {/* Context menu */}

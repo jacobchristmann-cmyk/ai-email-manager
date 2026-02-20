@@ -4,6 +4,7 @@ import { useCategoryStore } from '../stores/categoryStore'
 import type { ActionItem, FollowUp, SmartReplyResult } from '../../shared/types'
 import SnoozeDialog from './SnoozeDialog'
 import FollowUpDialog from './FollowUpDialog'
+import Tooltip from './Tooltip'
 
 function actionIcon(type: ActionItem['type']): string {
   const map: Record<ActionItem['type'], string> = { reply: '✉️', deadline: '⏰', confirm: '✅', document: '📄', meeting: '📅', other: '📌' }
@@ -260,71 +261,82 @@ export default function EmailDetail(): React.JSX.Element {
               </>
             )}
             {email.snoozeUntil ? (
-              <button
-                onClick={() => unsnoozeEmail(email.id)}
-                title="Wiedervorlage aufheben"
-                className="rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-400 dark:hover:bg-blue-900/20"
-              >
-                🕐 {new Date(email.snoozeUntil).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-              </button>
+              <Tooltip text="Wiedervorlage aufheben">
+                <button
+                  onClick={() => unsnoozeEmail(email.id)}
+                  className="rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                >
+                  🕐 {new Date(email.snoozeUntil).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                </button>
+              </Tooltip>
             ) : (
-              <button
-                onClick={() => setShowSnooze(true)}
-                title="Zurückstellen"
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-500 hover:border-blue-400 hover:text-blue-500 dark:border-gray-600 dark:text-gray-400"
-              >
-                🕐
-              </button>
+              <Tooltip text="E-Mail zurückstellen — erscheint zum gewählten Zeitpunkt wieder">
+                <button
+                  onClick={() => setShowSnooze(true)}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-500 hover:border-blue-400 hover:text-blue-500 dark:border-gray-600 dark:text-gray-400"
+                >
+                  🕐
+                </button>
+              </Tooltip>
             )}
             {(() => {
               const activeFollowUp: FollowUp | undefined = followUps.find((f) => f.emailId === email.id && f.status === 'pending')
               return activeFollowUp ? (
-                <button
-                  onClick={() => dismissFollowUp(activeFollowUp.id)}
-                  title="Follow-up aufheben"
-                  className="rounded-lg border border-orange-300 px-3 py-1.5 text-sm font-medium text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
-                >
-                  🔔 {new Date(activeFollowUp.remindAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
-                </button>
+                <Tooltip text="Nachfass-Erinnerung aufheben">
+                  <button
+                    onClick={() => dismissFollowUp(activeFollowUp.id)}
+                    className="rounded-lg border border-orange-300 px-3 py-1.5 text-sm font-medium text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                  >
+                    🔔 {new Date(activeFollowUp.remindAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                  </button>
+                </Tooltip>
               ) : (
-                <button
-                  onClick={() => setShowFollowUp(true)}
-                  title="Nachfassen wenn keine Antwort"
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-500 hover:border-orange-400 hover:text-orange-500 dark:border-gray-600 dark:text-gray-400"
-                >
-                  🔔
-                </button>
+                <Tooltip text="Erinnerung setzen wenn keine Antwort kommt">
+                  <button
+                    onClick={() => setShowFollowUp(true)}
+                    className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-500 hover:border-orange-400 hover:text-orange-500 dark:border-gray-600 dark:text-gray-400"
+                  >
+                    🔔
+                  </button>
+                </Tooltip>
               )
             })()}
-            <button
-              onClick={handleToggleStar}
-              title={isStarred ? 'Stern entfernen' : 'Mit Stern markieren'}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                isStarred
-                  ? 'bg-yellow-400 text-white hover:bg-yellow-500'
-                  : 'border border-gray-300 text-gray-500 hover:border-yellow-400 hover:text-yellow-500 dark:border-gray-600 dark:text-gray-400'
-              }`}
-            >
-              {isStarred ? '★' : '☆'}
-            </button>
-            <button
-              onClick={handleReply}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              Antworten
-            </button>
-            <button
-              onClick={handleForward}
-              className="rounded-lg bg-gray-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-600"
-            >
-              Weiterleiten
-            </button>
-            <button
-              onClick={handleDelete}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
-            >
-              Löschen
-            </button>
+            <Tooltip text={isStarred ? 'Stern entfernen' : 'Mit Stern markieren'}>
+              <button
+                onClick={handleToggleStar}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  isStarred
+                    ? 'bg-yellow-400 text-white hover:bg-yellow-500'
+                    : 'border border-gray-300 text-gray-500 hover:border-yellow-400 hover:text-yellow-500 dark:border-gray-600 dark:text-gray-400'
+                }`}
+              >
+                {isStarred ? '★' : '☆'}
+              </button>
+            </Tooltip>
+            <Tooltip text="E-Mail beantworten">
+              <button
+                onClick={handleReply}
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Antworten
+              </button>
+            </Tooltip>
+            <Tooltip text="E-Mail an eine andere Person weiterleiten">
+              <button
+                onClick={handleForward}
+                className="rounded-lg bg-gray-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-600"
+              >
+                Weiterleiten
+              </button>
+            </Tooltip>
+            <Tooltip text="E-Mail in den Papierkorb verschieben">
+              <button
+                onClick={handleDelete}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Löschen
+              </button>
+            </Tooltip>
           </div>
         </div>
         <div className="mt-2 space-y-1 text-sm text-gray-500 dark:text-gray-400">
@@ -378,12 +390,14 @@ export default function EmailDetail(): React.JSX.Element {
               <option value="Deutsch">Deutsch</option>
               <option value="English">English</option>
             </select>
-            <button
-              onClick={handleSmartReply}
-              className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
-            >
-              KI-Antwort
-            </button>
+            <Tooltip text="KI schlägt passende Antwortformulierungen vor">
+              <button
+                onClick={handleSmartReply}
+                className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
+              >
+                KI-Antwort
+              </button>
+            </Tooltip>
           </div>
         )}
 
