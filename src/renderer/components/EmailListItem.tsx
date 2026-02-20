@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { memo, useState, useRef, useEffect, useMemo } from 'react'
 import type { Email } from '../../shared/types'
 import { useCategoryStore } from '../stores/categoryStore'
 import { useChatStore } from '../stores/chatStore'
@@ -12,17 +12,27 @@ interface EmailListItemProps {
   onClick: () => void
 }
 
-export default function EmailListItem({
+function EmailListItem({
   email,
   isSelected,
   onClick
 }: EmailListItemProps): React.JSX.Element {
+  // Narrow subscriptions — each selector returns a primitive or stable reference,
+  // so this component only re-renders when its own data actually changes.
   const categories = useCategoryStore((s) => s.categories)
-  const category = email.categoryId ? categories.find((c) => c.id === email.categoryId) : null
   const analyzeEmail = useChatStore((s) => s.analyzeEmail)
-  const { markRead, markUnread, deleteEmail, moveEmail, toggleStar, toggleSelectEmail, selectedIds } = useEmailStore()
-  const isSelected2 = selectedIds.has(email.id)
-  const mailboxes = useMailboxStore((s) => s.mailboxes)
+
+  const isSelected2 = useEmailStore((s) => s.selectedIds.has(email.id))
+  const markRead = useEmailStore((s) => s.markRead)
+  const markUnread = useEmailStore((s) => s.markUnread)
+  const deleteEmail = useEmailStore((s) => s.deleteEmail)
+  const moveEmail = useEmailStore((s) => s.moveEmail)
+  const toggleStar = useEmailStore((s) => s.toggleStar)
+  const toggleSelectEmail = useEmailStore((s) => s.toggleSelectEmail)
+
+  // Use undefined-returning selector so Zustand gets a stable reference.
+  // ?? [] inside a selector creates a new array each render → infinite loop.
+  const rawMailboxes = useMailboxStore((s) => s.mailboxes[email.accountId])
   const emailDensity = useSettingsStore((s) => s.settings.emailDensity || 'comfortable')
   const densityPy = emailDensity === 'compact' ? 'py-1.5' : emailDensity === 'spacious' ? 'py-5' : 'py-3'
 
@@ -30,13 +40,25 @@ export default function EmailListItem({
   const [showMoveSubmenu, setShowMoveSubmenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const date = new Date(email.date)
-  const isToday = new Date().toDateString() === date.toDateString()
-  const dateStr = isToday
-    ? date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-    : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+  const category = useMemo(
+    () => (email.categoryId ? categories.find((c) => c.id === email.categoryId) ?? null : null),
+    [categories, email.categoryId]
+  )
 
-  const snippet = email.body ? email.body.replace(/\s+/g, ' ').slice(0, 100) : ''
+  const { dateStr, snippet } = useMemo(() => {
+    const date = new Date(email.date)
+    const isToday = new Date().toDateString() === date.toDateString()
+    const ds = isToday
+      ? date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+      : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+    const sn = email.body ? email.body.replace(/\s+/g, ' ').slice(0, 100) : ''
+    return { dateStr: ds, snippet: sn }
+  }, [email.date, email.body])
+
+  const moveTargets = useMemo(
+    () => (rawMailboxes ?? []).filter((mb) => mb.path !== email.mailbox),
+    [rawMailboxes, email.mailbox]
+  )
 
   const handleContextMenu = (e: React.MouseEvent): void => {
     e.preventDefault()
@@ -77,10 +99,6 @@ export default function EmailListItem({
     closeMenu()
     moveEmail(email.id, targetMailbox)
   }
-
-  // Get available mailboxes for move submenu
-  const accountMailboxes = mailboxes[email.accountId] || []
-  const moveTargets = accountMailboxes.filter((mb) => mb.path !== email.mailbox)
 
   useEffect(() => {
     if (!contextMenu) return
@@ -246,3 +264,5 @@ export default function EmailListItem({
     </>
   )
 }
+
+export default memo(EmailListItem)

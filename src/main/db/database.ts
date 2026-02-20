@@ -146,9 +146,10 @@ export function getDb(): Database.Database {
   // Migration: change unique constraint to include mailbox
   // Check if we need to migrate by looking for the old unique index
   const indices = db.pragma('index_list(emails)') as { name: string; unique: number }[]
+  const dbRef = db
   const hasOldUnique = indices.some((idx) => {
     if (!idx.unique) return false
-    const cols = db.pragma(`index_info(${idx.name})`) as { name: string }[]
+    const cols = dbRef.pragma(`index_info(${idx.name})`) as { name: string }[]
     return cols.length === 2 && cols.some((c) => c.name === 'account_id') && cols.some((c) => c.name === 'message_id') && !cols.some((c) => c.name === 'mailbox')
   })
   if (hasOldUnique) {
@@ -185,6 +186,13 @@ export function getDb(): Database.Database {
 
   // Ensure mailbox index exists
   db.exec('CREATE INDEX IF NOT EXISTS idx_emails_account_mailbox ON emails(account_id, mailbox)')
+
+  // Performance indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_emails_is_read ON emails(account_id, mailbox, is_read);
+    CREATE INDEX IF NOT EXISTS idx_emails_is_starred ON emails(is_starred) WHERE is_starred = 1;
+    CREATE INDEX IF NOT EXISTS idx_emails_needs_body ON emails(account_id, date DESC) WHERE body IS NULL OR body = '';
+  `)
 
   // FTS5 full-text search index for subject + body
   db.exec(`

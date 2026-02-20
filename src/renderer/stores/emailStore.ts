@@ -165,18 +165,17 @@ export const useEmailStore = create<EmailState>((set, get) => ({
 
   markAllReadInMailbox: async (accountId, mailbox) => {
     await window.electronAPI.emailMarkAllRead(accountId, mailbox)
-    set((state) => ({
-      emails: state.emails.map((e) =>
-        e.accountId === accountId && e.mailbox === mailbox ? { ...e, isRead: true } : e
-      ),
-      unreadCount: state.emails.filter(
+    set((state) => {
+      const unreadInMailbox = state.emails.filter(
         (e) => e.accountId === accountId && e.mailbox === mailbox && !e.isRead
-      ).length > 0
-        ? Math.max(0, state.unreadCount - state.emails.filter(
-            (e) => e.accountId === accountId && e.mailbox === mailbox && !e.isRead
-          ).length)
-        : state.unreadCount
-    }))
+      ).length
+      return {
+        emails: state.emails.map((e) =>
+          e.accountId === accountId && e.mailbox === mailbox ? { ...e, isRead: true } : e
+        ),
+        unreadCount: Math.max(0, state.unreadCount - unreadInMailbox)
+      }
+    })
   },
 
   deleteEmail: async (id) => {
@@ -269,8 +268,9 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     if (aiSearchResults) {
       const idSet = new Set(aiSearchResults)
       filtered = filtered.filter((e) => idSet.has(e.id))
-      // Sort by AI relevance order
-      filtered.sort((a, b) => aiSearchResults.indexOf(a.id) - aiSearchResults.indexOf(b.id))
+      // Sort by AI relevance order — O(n log n) with Map lookup instead of O(n² log n)
+      const rankMap = new Map(aiSearchResults.map((id, i) => [id, i]))
+      filtered.sort((a, b) => (rankMap.get(a.id) ?? 0) - (rankMap.get(b.id) ?? 0))
       return filtered
     }
 
@@ -426,20 +426,25 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     const ids = [...get().selectedIds]
     if (ids.length === 0) return
     await window.electronAPI.emailBulkMarkRead(ids)
-    set((state) => ({
-      emails: state.emails.map((e) => ids.includes(e.id) ? { ...e, isRead: true } : e),
-      unreadCount: Math.max(0, state.unreadCount - ids.filter((id) => !state.emails.find((e) => e.id === id)?.isRead).length),
-      selectedIds: new Set()
-    }))
+    const idSet = new Set(ids)
+    set((state) => {
+      const newlyRead = state.emails.filter((e) => idSet.has(e.id) && !e.isRead).length
+      return {
+        emails: state.emails.map((e) => idSet.has(e.id) ? { ...e, isRead: true } : e),
+        unreadCount: Math.max(0, state.unreadCount - newlyRead),
+        selectedIds: new Set()
+      }
+    })
   },
 
   bulkMarkUnread: async () => {
     const ids = [...get().selectedIds]
     if (ids.length === 0) return
     await window.electronAPI.emailBulkMarkUnread(ids)
-    const wasReadCount = ids.filter((id) => get().emails.find((e) => e.id === id)?.isRead).length
+    const idSet = new Set(ids)
+    const wasReadCount = get().emails.filter((e) => idSet.has(e.id) && e.isRead).length
     set((state) => ({
-      emails: state.emails.map((e) => ids.includes(e.id) ? { ...e, isRead: false } : e),
+      emails: state.emails.map((e) => idSet.has(e.id) ? { ...e, isRead: false } : e),
       unreadCount: state.unreadCount + wasReadCount,
       selectedIds: new Set()
     }))
@@ -449,11 +454,12 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     const ids = [...get().selectedIds]
     if (ids.length === 0) return
     await window.electronAPI.emailBulkDelete(ids)
+    const idSet = new Set(ids)
     set((state) => {
-      const deletedUnread = ids.filter((id) => !state.emails.find((e) => e.id === id)?.isRead).length
+      const deletedUnread = state.emails.filter((e) => idSet.has(e.id) && !e.isRead).length
       return {
-        emails: state.emails.filter((e) => !ids.includes(e.id)),
-        selectedEmailId: ids.includes(state.selectedEmailId ?? '') ? null : state.selectedEmailId,
+        emails: state.emails.filter((e) => !idSet.has(e.id)),
+        selectedEmailId: idSet.has(state.selectedEmailId ?? '') ? null : state.selectedEmailId,
         unreadCount: Math.max(0, state.unreadCount - deletedUnread),
         selectedIds: new Set()
       }

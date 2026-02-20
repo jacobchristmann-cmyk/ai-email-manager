@@ -123,13 +123,7 @@ export async function syncAccount(accountId: string): Promise<void> {
 
 export async function syncAllAccounts(): Promise<void> {
   const accounts = listAccounts()
-  for (const account of accounts) {
-    try {
-      await syncAccount(account.id)
-    } catch {
-      // Error already broadcast via syncAccount
-    }
-  }
+  await Promise.allSettled(accounts.map((account) => syncAccount(account.id)))
 }
 
 export async function fullResyncAccount(accountId: string): Promise<void> {
