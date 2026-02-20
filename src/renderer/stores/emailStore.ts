@@ -1,6 +1,36 @@
 import { create } from 'zustand'
 import type { ActionItem, Email, EmailBodyUpdate, EmailSearchParams, EmailSend, FollowUp, SyncStatus } from '../../shared/types'
 
+const URGENT_RE = /urgent|wichtig|frist|dringend|asap|sofort|deadline|heute|today|action required|handlungsbedarf/i
+
+function computePriorityScore(email: Email): number {
+  let score = 50
+
+  // Category signals
+  if (email.categoryId === 'cat-wichtig') score += 30
+  if (email.categoryId === 'cat-newsletter') score -= 40
+  if (email.categoryId === 'cat-spam') score -= 50
+  if (email.categoryId === 'cat-social') score -= 20
+
+  // Newsletter header = bulk mail
+  if (email.listUnsubscribe) score -= 30
+
+  // Engagement signals
+  if (!email.isRead) score += 10
+  if (email.isStarred) score += 20
+  if (email.actionItems.length > 0) score += 15
+
+  // Urgency keywords in subject
+  if (URGENT_RE.test(email.subject)) score += 20
+
+  // Recency bonus/penalty
+  const ageHours = (Date.now() - new Date(email.date).getTime()) / 3_600_000
+  if (ageHours < 24) score += 10
+  else if (ageHours > 168) score -= 10 // older than 1 week
+
+  return Math.max(0, Math.min(100, score))
+}
+
 interface EmailState {
   emails: Email[]
   selectedEmailId: string | null
@@ -273,6 +303,10 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       get().loadSnoozedEmails()
     } else if (mailbox === '__followup__') {
       get().loadFollowUps()
+    } else if (mailbox === '__priority__') {
+      // Priority view uses already-loaded emails — just reload all
+      const accountId = get().selectedAccountId ?? undefined
+      get().loadEmails(accountId, undefined)
     } else {
       const accountId = get().selectedAccountId ?? undefined
       get().loadEmails(accountId, mailbox ?? undefined)
@@ -293,6 +327,14 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     if (selectedMailbox === '__followup__') {
       const followupEmailIds = new Set(followUps.filter((f) => f.status === 'pending').map((f) => f.emailId))
       return emails.filter((e) => followupEmailIds.has(e.id))
+    }
+    if (selectedMailbox === '__priority__') {
+      return [...emails]
+        .map((e) => ({ email: e, score: computePriorityScore(e) }))
+        .filter(({ score }) => score >= 40) // cut off obvious junk
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 100)
+        .map(({ email }) => email)
     }
     let filtered = emails
 

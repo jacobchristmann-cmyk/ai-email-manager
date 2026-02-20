@@ -156,6 +156,15 @@ export default function Sidebar(): React.JSX.Element {
     <aside className="flex h-full flex-col overflow-hidden text-white" style={{ background: 'var(--sidebar-bg, #111827)' }}>
       <div className="p-4 text-lg font-bold tracking-tight">{appName}</div>
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2">
+        {/* Prioritäts-Inbox (virtual mailbox) */}
+        <button
+          onClick={() => { setSelectedMailbox('__priority__'); navigate('/') }}
+          className={linkClass(selectedMailbox === '__priority__') + ' w-full'}
+        >
+          <span className="text-sm">⭐</span>
+          <span className="truncate">Prioritäts-Inbox</span>
+        </button>
+
         {/* Zurückgestellt (virtual mailbox) */}
         <button
           onClick={() => { setSelectedMailbox('__snoozed__'); navigate('/') }}
