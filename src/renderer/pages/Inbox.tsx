@@ -75,7 +75,7 @@ export default function Inbox(): React.JSX.Element {
   }, [composeOpen, openCompose])
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col p-6">
       {/* Briefing (above header) */}
       <InboxBriefing />
 

@@ -82,12 +82,12 @@ export default function App(): React.JSX.Element {
               <span>Settings</span>
             </NavLink>
           </header>
-          <main className="flex-1 overflow-auto p-6">
+          <main className="flex-1 min-h-0 overflow-hidden">
             <Routes>
               <Route path="/" element={<Inbox />} />
-              <Route path="/statistics" element={<Statistics />} />
-              <Route path="/accounts" element={<Accounts />} />
-              <Route path="/settings" element={<Settings />} />
+              <Route path="/statistics" element={<div className="h-full overflow-auto p-6"><Statistics /></div>} />
+              <Route path="/accounts" element={<div className="h-full overflow-auto p-6"><Accounts /></div>} />
+              <Route path="/settings" element={<div className="h-full overflow-auto p-6"><Settings /></div>} />
             </Routes>
           </main>
         </div>
