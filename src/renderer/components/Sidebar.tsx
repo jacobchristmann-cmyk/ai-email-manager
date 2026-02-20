@@ -41,6 +41,8 @@ export default function Sidebar(): React.JSX.Element {
   const reorderMailbox = useMailboxStore((s) => s.reorderMailbox)
   const snoozedEmails = useEmailStore((s) => s.snoozedEmails)
   const loadSnoozedEmails = useEmailStore((s) => s.loadSnoozedEmails)
+  const followUps = useEmailStore((s) => s.followUps)
+  const loadFollowUps = useEmailStore((s) => s.loadFollowUps)
   const navigate = useNavigate()
 
   const [expandedAccounts, setExpandedAccounts] = useState<Record<string, boolean>>({})
@@ -54,7 +56,8 @@ export default function Sidebar(): React.JSX.Element {
   useEffect(() => {
     loadAccounts()
     loadSnoozedEmails()
-  }, [loadAccounts, loadSnoozedEmails])
+    loadFollowUps()
+  }, [loadAccounts, loadSnoozedEmails, loadFollowUps])
 
   useEffect(() => {
     if (accounts.length > 0) {
@@ -163,6 +166,20 @@ export default function Sidebar(): React.JSX.Element {
           {snoozedEmails.length > 0 && (
             <span className="ml-auto rounded-full bg-blue-600 px-2 py-0.5 text-xs font-medium">
               {snoozedEmails.length}
+            </span>
+          )}
+        </button>
+
+        {/* Nachfassen (follow-up virtual mailbox) */}
+        <button
+          onClick={() => { setSelectedMailbox('__followup__'); navigate('/') }}
+          className={linkClass(selectedMailbox === '__followup__') + ' w-full'}
+        >
+          <span className="text-sm">🔔</span>
+          <span className="truncate">Nachfassen</span>
+          {followUps.length > 0 && (
+            <span className="ml-auto rounded-full bg-orange-500 px-2 py-0.5 text-xs font-medium">
+              {followUps.length}
             </span>
           )}
         </button>

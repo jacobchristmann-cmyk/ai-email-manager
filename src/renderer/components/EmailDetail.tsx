@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useEmailStore } from '../stores/emailStore'
 import { useCategoryStore } from '../stores/categoryStore'
-import type { ActionItem, SmartReplyResult } from '../../shared/types'
+import type { ActionItem, FollowUp, SmartReplyResult } from '../../shared/types'
 import SnoozeDialog from './SnoozeDialog'
+import FollowUpDialog from './FollowUpDialog'
 
 function actionIcon(type: ActionItem['type']): string {
   const map: Record<ActionItem['type'], string> = { reply: '✉️', deadline: '⏰', confirm: '✅', document: '📄', meeting: '📅', other: '📌' }
@@ -22,6 +23,9 @@ export default function EmailDetail(): React.JSX.Element {
   const isDetectingActions = useEmailStore((s) => s.isDetectingActions)
   const snoozeEmail = useEmailStore((s) => s.snoozeEmail)
   const unsnoozeEmail = useEmailStore((s) => s.unsnoozeEmail)
+  const followUps = useEmailStore((s) => s.followUps)
+  const setFollowUp = useEmailStore((s) => s.setFollowUp)
+  const dismissFollowUp = useEmailStore((s) => s.dismissFollowUp)
   const categories = useCategoryStore((s) => s.categories)
 
   const email = selectedEmailId
@@ -29,6 +33,7 @@ export default function EmailDetail(): React.JSX.Element {
     : undefined
 
   const [showSnooze, setShowSnooze] = useState(false)
+  const [showFollowUp, setShowFollowUp] = useState(false)
 
   // Thread: find related emails by threadId or matching subject (Re:/Fwd: stripped)
   const threadEmails = useMemo(() => {
@@ -89,6 +94,7 @@ export default function EmailDetail(): React.JSX.Element {
     setUnsubscribeLogId(null)
     setUnsubscribeConfirmed(false)
     setShowSnooze(false)
+    setShowFollowUp(false)
   }, [selectedEmailId])
 
   if (!email) {
@@ -183,6 +189,12 @@ export default function EmailDetail(): React.JSX.Element {
           onClose={() => setShowSnooze(false)}
         />
       )}
+      {showFollowUp && (
+        <FollowUpDialog
+          onConfirm={(remindAt) => setFollowUp(email.id, email.accountId, email.messageId, email.subject, remindAt)}
+          onClose={() => setShowFollowUp(false)}
+        />
+      )}
       {/* Header */}
       <div className="border-b border-gray-200 p-4 dark:border-gray-700">
         <div className="flex items-start justify-between gap-4">
@@ -264,6 +276,26 @@ export default function EmailDetail(): React.JSX.Element {
                 🕐
               </button>
             )}
+            {(() => {
+              const activeFollowUp: FollowUp | undefined = followUps.find((f) => f.emailId === email.id && f.status === 'pending')
+              return activeFollowUp ? (
+                <button
+                  onClick={() => dismissFollowUp(activeFollowUp.id)}
+                  title="Follow-up aufheben"
+                  className="rounded-lg border border-orange-300 px-3 py-1.5 text-sm font-medium text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                >
+                  🔔 {new Date(activeFollowUp.remindAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowFollowUp(true)}
+                  title="Nachfassen wenn keine Antwort"
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-500 hover:border-orange-400 hover:text-orange-500 dark:border-gray-600 dark:text-gray-400"
+                >
+                  🔔
+                </button>
+              )
+            })()}
             <button
               onClick={handleToggleStar}
               title={isStarred ? 'Stern entfernen' : 'Mit Stern markieren'}

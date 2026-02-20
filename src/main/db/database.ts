@@ -170,6 +170,20 @@ Mit freundlichen Grüßen
     )
   `)
 
+  // Follow-up reminders
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS follow_ups (
+      id TEXT PRIMARY KEY,
+      email_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      subject TEXT NOT NULL DEFAULT '',
+      remind_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+
   // Unsubscribe tracking
   db.exec(`
     CREATE TABLE IF NOT EXISTS unsubscribe_log (

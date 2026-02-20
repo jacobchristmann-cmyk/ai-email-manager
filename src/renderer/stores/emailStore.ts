@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ActionItem, Email, EmailBodyUpdate, EmailSearchParams, EmailSend, SyncStatus } from '../../shared/types'
+import type { ActionItem, Email, EmailBodyUpdate, EmailSearchParams, EmailSend, FollowUp, SyncStatus } from '../../shared/types'
 
 interface EmailState {
   emails: Email[]
@@ -82,6 +82,12 @@ interface EmailState {
   loadSnoozedEmails: () => Promise<void>
   detectActions: (id: string) => Promise<ActionItem[]>
   handleSnoozeWakeup: (ids: string[]) => void
+  // Follow-up
+  followUps: FollowUp[]
+  loadFollowUps: () => Promise<void>
+  setFollowUp: (emailId: string, accountId: string, messageId: string, subject: string, remindAt: string) => Promise<void>
+  dismissFollowUp: (id: string) => Promise<void>
+  handleFollowupDue: (ids: string[]) => void
 }
 
 export const useEmailStore = create<EmailState>((set, get) => ({
@@ -112,6 +118,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   selectedIds: new Set<string>(),
   snoozedEmails: [],
   isDetectingActions: false,
+  followUps: [],
 
   loadEmails: async (accountId?, mailbox?) => {
     set({ isLoading: true })
@@ -264,6 +271,8 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     set({ selectedMailbox: mailbox, selectedEmailId: null })
     if (mailbox === '__snoozed__') {
       get().loadSnoozedEmails()
+    } else if (mailbox === '__followup__') {
+      get().loadFollowUps()
     } else {
       const accountId = get().selectedAccountId ?? undefined
       get().loadEmails(accountId, mailbox ?? undefined)
@@ -279,8 +288,12 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   },
 
   filteredEmails: () => {
-    const { emails, searchQuery, selectedCategoryId, aiSearchResults, selectedMailbox, snoozedEmails } = get()
+    const { emails, searchQuery, selectedCategoryId, aiSearchResults, selectedMailbox, snoozedEmails, followUps } = get()
     if (selectedMailbox === '__snoozed__') return snoozedEmails
+    if (selectedMailbox === '__followup__') {
+      const followupEmailIds = new Set(followUps.filter((f) => f.status === 'pending').map((f) => f.emailId))
+      return emails.filter((e) => followupEmailIds.has(e.id))
+    }
     let filtered = emails
 
     if (selectedCategoryId) {
@@ -537,5 +550,31 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   handleSnoozeWakeup: (ids) => {
     set((state) => ({ snoozedEmails: state.snoozedEmails.filter((e) => !ids.includes(e.id)) }))
     get().loadEmails(get().selectedAccountId ?? undefined, get().selectedMailbox ?? undefined)
+  },
+
+  // Follow-up
+  loadFollowUps: async () => {
+    const result = await window.electronAPI.followupList()
+    if (result.success) set({ followUps: result.data! })
+  },
+
+  setFollowUp: async (emailId, accountId, messageId, subject, remindAt) => {
+    const result = await window.electronAPI.followupSet(emailId, accountId, messageId, subject, remindAt)
+    if (result.success) {
+      set((state) => {
+        const without = state.followUps.filter((f) => f.emailId !== emailId)
+        return { followUps: [...without, result.data!] }
+      })
+    }
+  },
+
+  dismissFollowUp: async (id) => {
+    await window.electronAPI.followupDismiss(id)
+    set((state) => ({ followUps: state.followUps.filter((f) => f.id !== id) }))
+  },
+
+  handleFollowupDue: (ids) => {
+    // fired follow-ups are removed from the pending list
+    set((state) => ({ followUps: state.followUps.filter((f) => !ids.includes(f.id)) }))
   }
 }))

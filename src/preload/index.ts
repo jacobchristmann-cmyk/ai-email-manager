@@ -128,6 +128,17 @@ const electronAPI: ElectronAPI = {
   templateUpdate: (id, data) => ipcRenderer.invoke('template:update', id, data),
   templateDelete: (id) => ipcRenderer.invoke('template:delete', id),
 
+  // Follow-up reminders
+  followupSet: (emailId, accountId, messageId, subject, remindAt) =>
+    ipcRenderer.invoke('followup:set', emailId, accountId, messageId, subject, remindAt),
+  followupDismiss: (id) => ipcRenderer.invoke('followup:dismiss', id),
+  followupList: () => ipcRenderer.invoke('followup:list'),
+  onFollowupDue: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, ids: unknown): void => callback(ids as string[])
+    ipcRenderer.on('followup:due', handler)
+    return () => ipcRenderer.removeListener('followup:due', handler)
+  },
+
   // Lifecycle
   notifyReady: () => ipcRenderer.send('renderer:ready')
 }

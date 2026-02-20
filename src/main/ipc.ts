@@ -12,6 +12,7 @@ import {
 } from './db/emailDao'
 import { detectEmailActions } from './ai/actionsService'
 import { listTemplates, createTemplate, updateTemplate, deleteTemplate } from './db/templateDao'
+import { setFollowUp, dismissFollowUp, listPendingFollowUps } from './db/followUpDao'
 import { logError } from './logger'
 import { listMailboxes, createMailbox, moveEmail, fetchEmailBody, markEmailSeen, markEmailUnseen, appendToMailbox } from './email/imapClient'
 import {
@@ -805,6 +806,20 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('template:delete', async (_e, id: string) => {
     try { deleteTemplate(id); return ok(undefined) } catch (err) { return fail(String(err)) }
+  })
+
+  // === Follow-up Reminders ===
+
+  ipcMain.handle('followup:set', async (_e, emailId: string, accountId: string, messageId: string, subject: string, remindAt: string) => {
+    try { return ok(setFollowUp(emailId, accountId, messageId, subject, remindAt)) } catch (err) { return fail(String(err)) }
+  })
+
+  ipcMain.handle('followup:dismiss', async (_e, id: string) => {
+    try { dismissFollowUp(id); return ok(undefined) } catch (err) { return fail(String(err)) }
+  })
+
+  ipcMain.handle('followup:list', async () => {
+    try { return ok(listPendingFollowUps()) } catch (err) { return fail(String(err)) }
   })
 }
 

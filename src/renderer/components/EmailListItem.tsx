@@ -6,6 +6,7 @@ import { useEmailStore } from '../stores/emailStore'
 import { useMailboxStore } from '../stores/mailboxStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import SnoozeDialog from './SnoozeDialog'
+import FollowUpDialog from './FollowUpDialog'
 
 interface EmailListItemProps {
   email: Email
@@ -38,10 +39,13 @@ function EmailListItem({
   const densityPy = emailDensity === 'compact' ? 'py-1.5' : emailDensity === 'spacious' ? 'py-5' : 'py-3'
 
   const snoozeEmail = useEmailStore((s) => s.snoozeEmail)
+  const setFollowUp = useEmailStore((s) => s.setFollowUp)
+  const followUps = useEmailStore((s) => s.followUps)
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showMoveSubmenu, setShowMoveSubmenu] = useState(false)
   const [showSnooze, setShowSnooze] = useState(false)
+  const [showFollowUp, setShowFollowUp] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const category = useMemo(
@@ -243,6 +247,17 @@ function EmailListItem({
             Zurückstellen
           </button>
 
+          {/* Follow-up */}
+          {!followUps.some((f) => f.emailId === email.id && f.status === 'pending') && (
+            <button
+              onClick={() => { closeMenu(); setShowFollowUp(true) }}
+              className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              <span className="w-4 text-center text-xs">🔔</span>
+              Nachfassen wenn keine Antwort
+            </button>
+          )}
+
           {/* Move to trash */}
           <button
             onClick={handleMoveToTrash}
@@ -282,6 +297,12 @@ function EmailListItem({
         <SnoozeDialog
           onSnooze={(until) => snoozeEmail(email.id, until)}
           onClose={() => setShowSnooze(false)}
+        />
+      )}
+      {showFollowUp && (
+        <FollowUpDialog
+          onConfirm={(remindAt) => setFollowUp(email.id, email.accountId, email.messageId, email.subject, remindAt)}
+          onClose={() => setShowFollowUp(false)}
         />
       )}
     </>

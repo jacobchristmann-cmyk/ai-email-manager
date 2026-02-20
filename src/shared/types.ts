@@ -157,6 +157,19 @@ export interface UnsubscribeLog {
   confirmedAt?: string
 }
 
+// === Follow-up Reminder ===
+
+export interface FollowUp {
+  id: string
+  emailId: string
+  accountId: string
+  messageId: string
+  subject: string
+  remindAt: string
+  status: 'pending' | 'fired' | 'dismissed'
+  createdAt: string
+}
+
 // === Reply Template ===
 
 export interface ReplyTemplate {
@@ -298,6 +311,11 @@ export interface ElectronAPI {
   templateCreate: (name: string, body: string) => Promise<IpcResult<ReplyTemplate>>
   templateUpdate: (id: string, data: { name?: string; body?: string }) => Promise<IpcResult<ReplyTemplate>>
   templateDelete: (id: string) => Promise<IpcResult<void>>
+  // Follow-up reminders
+  followupSet: (emailId: string, accountId: string, messageId: string, subject: string, remindAt: string) => Promise<IpcResult<FollowUp>>
+  followupDismiss: (id: string) => Promise<IpcResult<void>>
+  followupList: () => Promise<IpcResult<FollowUp[]>>
+  onFollowupDue: (callback: (followupIds: string[]) => void) => () => void
   // Lifecycle
   notifyReady: () => void
 }
@@ -364,6 +382,10 @@ export type IpcChannels =
   | 'template:create'
   | 'template:update'
   | 'template:delete'
+  | 'followup:set'
+  | 'followup:dismiss'
+  | 'followup:list'
+  | 'followup:due'
 
 // === Window augmentation ===
 

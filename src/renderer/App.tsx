@@ -31,6 +31,12 @@ export default function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    return window.electronAPI.onFollowupDue((ids) => {
+      useEmailStore.getState().handleFollowupDue(ids)
+    })
+  }, [])
+
+  useEffect(() => {
     const theme = settings.theme || 'light'
     if (theme === 'dark') {
       document.documentElement.classList.add('dark')

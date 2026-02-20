@@ -2,9 +2,31 @@ import { BrowserWindow, Notification, ipcMain } from 'electron'
 import { getSetting } from '../db/settingsDao'
 import { syncAllAccounts } from './syncService'
 import { getEmailsDueToWakeUp, unsnoozeEmail } from '../db/emailDao'
+import { getDueFollowUps, markFollowUpsFired, autoDismissReplied } from '../db/followUpDao'
 
 let timer: NodeJS.Timeout | null = null
 let wakeupTimer: NodeJS.Timeout | null = null
+
+function checkFollowUps(): void {
+  autoDismissReplied()
+  const due = getDueFollowUps()
+  if (due.length === 0) return
+  markFollowUpsFired(due.map((f) => f.id))
+  for (const followup of due) {
+    if (Notification.isSupported()) {
+      const n = new Notification({ title: 'Nachfassen?', body: followup.subject })
+      n.on('click', () => {
+        const win = BrowserWindow.getAllWindows()[0]
+        if (win) { win.show(); win.focus() }
+      })
+      n.show()
+    }
+  }
+  const ids = due.map((f) => f.id)
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('followup:due', ids)
+  }
+}
 
 function checkSnoozeWakeups(): void {
   const wakeups = getEmailsDueToWakeUp()
@@ -29,8 +51,11 @@ export function startScheduler(): void {
   const minutes = raw ? parseInt(raw, 10) : 0
   setTimer(minutes)
 
-  // Snooze wakeup check every 60 seconds
-  wakeupTimer = setInterval(checkSnoozeWakeups, 60_000)
+  // Snooze wakeup + follow-up check every 60 seconds
+  wakeupTimer = setInterval(() => {
+    checkSnoozeWakeups()
+    checkFollowUps()
+  }, 60_000)
 
   // Trigger initial sync only after the renderer signals it is fully mounted
   // and has registered its sync:status listener — avoids the fragile 2s timeout.
