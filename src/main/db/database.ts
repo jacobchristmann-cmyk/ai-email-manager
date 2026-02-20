@@ -158,6 +158,18 @@ Mit freundlichen Grüßen
 {{MeinName}}')
   `)
 
+  // Error log
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS error_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      level TEXT NOT NULL DEFAULT 'error',
+      context TEXT NOT NULL,
+      message TEXT NOT NULL,
+      stack TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+
   // Unsubscribe tracking
   db.exec(`
     CREATE TABLE IF NOT EXISTS unsubscribe_log (

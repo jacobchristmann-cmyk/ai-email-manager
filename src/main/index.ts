@@ -4,6 +4,17 @@ import { registerIpcHandlers } from './ipc'
 import { getDb, closeDb } from './db/database'
 import { migratePasswordEncryption } from './db/accountDao'
 import { startScheduler } from './email/syncScheduler'
+import { logError } from './logger'
+
+// Catch uncaught exceptions and unhandled promise rejections in the main process
+process.on('uncaughtException', (err) => {
+  logError('uncaughtException', err.message, err.stack)
+})
+process.on('unhandledRejection', (reason) => {
+  const message = reason instanceof Error ? reason.message : String(reason)
+  const stack = reason instanceof Error ? reason.stack : undefined
+  logError('unhandledRejection', message, stack)
+})
 
 const isDev = !app.isPackaged
 

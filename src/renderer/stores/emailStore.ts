@@ -27,6 +27,7 @@ interface EmailState {
   // Compose
   composeOpen: boolean
   composeData: Partial<EmailSend> | null
+  composeEmailId: string | null
   isSending: boolean
   isBodyLoading: boolean
 
@@ -58,7 +59,7 @@ interface EmailState {
   clearAiSearch: () => void
   // Compose
   moveEmail: (emailId: string, targetMailbox: string) => Promise<boolean>
-  openCompose: (prefill?: Partial<EmailSend>) => void
+  openCompose: (prefill?: Partial<EmailSend>, emailId?: string) => void
   closeCompose: () => void
   sendEmail: (data: EmailSend) => Promise<boolean>
   // Star
@@ -105,6 +106,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   aiSearchError: null,
   composeOpen: false,
   composeData: null,
+  composeEmailId: null,
   isSending: false,
   isBodyLoading: false,
   selectedIds: new Set<string>(),
@@ -398,12 +400,12 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   },
 
   // Compose
-  openCompose: (prefill) => {
-    set({ composeOpen: true, composeData: prefill || null })
+  openCompose: (prefill, emailId) => {
+    set({ composeOpen: true, composeData: prefill || null, composeEmailId: emailId || null })
   },
 
   closeCompose: () => {
-    set({ composeOpen: false, composeData: null })
+    set({ composeOpen: false, composeData: null, composeEmailId: null })
   },
 
   sendEmail: async (data) => {

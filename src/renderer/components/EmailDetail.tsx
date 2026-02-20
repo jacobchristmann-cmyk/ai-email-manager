@@ -120,7 +120,7 @@ export default function EmailDetail(): React.JSX.Element {
       to: fromEmail || fromName,
       subject: email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`,
       body: quotedBody
-    })
+    }, email.id)
   }
 
   const handleForward = (): void => {

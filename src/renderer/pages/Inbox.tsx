@@ -52,7 +52,7 @@ export default function Inbox(): React.JSX.Element {
           to: fromEmail,
           subject: email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`,
           body: quotedBody
-        })
+        }, email.id)
       } else if (e.key === 'f' && email) {
         e.preventDefault()
         const date = new Date(email.date).toLocaleString('de-DE')

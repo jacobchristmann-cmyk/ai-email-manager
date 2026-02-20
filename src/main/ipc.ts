@@ -12,6 +12,7 @@ import {
 } from './db/emailDao'
 import { detectEmailActions } from './ai/actionsService'
 import { listTemplates, createTemplate, updateTemplate, deleteTemplate } from './db/templateDao'
+import { logError } from './logger'
 import { listMailboxes, createMailbox, moveEmail, fetchEmailBody, markEmailSeen, markEmailUnseen, appendToMailbox } from './email/imapClient'
 import {
   getAllSettings, setMultipleSettings
@@ -37,7 +38,8 @@ function ok<T>(data: T): IpcResult<T> {
   return { success: true, data }
 }
 
-function fail(error: string): IpcResult<never> {
+function fail(error: string, context = 'ipc'): IpcResult<never> {
+  logError(context, error)
   return { success: false, error }
 }
 

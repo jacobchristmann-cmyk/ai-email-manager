@@ -20,7 +20,7 @@ function resolveTemplateVars(
 }
 
 export default function ComposeModal(): React.JSX.Element | null {
-  const { composeOpen, composeData, closeCompose, sendEmail, isSending } = useEmailStore()
+  const { composeOpen, composeData, composeEmailId, closeCompose, sendEmail, isSending } = useEmailStore()
   const { accounts } = useAccountStore()
   const signature = useSettingsStore((s) => s.settings.signature || '')
   const { templates, loadTemplates } = useTemplateStore()
@@ -35,6 +35,7 @@ export default function ComposeModal(): React.JSX.Element | null {
   const [attachments, setAttachments] = useState<{ filename: string; path: string }[]>([])
   const [error, setError] = useState<string | null>(null)
   const [showTemplates, setShowTemplates] = useState(false)
+  const [isGeneratingAiReply, setIsGeneratingAiReply] = useState(false)
 
   // Contact autocomplete
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -337,8 +338,8 @@ export default function ComposeModal(): React.JSX.Element | null {
               Anhang
             </button>
 
-            {/* Template picker */}
-            {templates.length > 0 && (
+            {/* Template picker / AI reply */}
+            {(templates.length > 0 || composeEmailId) && (
               <div className="relative">
                 <button
                   onClick={() => setShowTemplates((v) => !v)}
@@ -350,32 +351,66 @@ export default function ComposeModal(): React.JSX.Element | null {
                   Vorlage
                 </button>
                 {showTemplates && (
-                  <div className="absolute bottom-full left-0 z-20 mb-1 min-w-[200px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">
-                    <p className="border-b border-gray-100 px-3 py-1.5 text-xs font-medium text-gray-400 dark:border-gray-700 dark:text-gray-500">
-                      Vorlage einfügen
-                    </p>
-                    {templates.map((tpl) => (
-                      <button
-                        key={tpl.id}
-                        onMouseDown={() => {
-                          const account = accounts.find((a) => a.id === accountId)
-                          const resolved = resolveTemplateVars(tpl.body, {
-                            to,
-                            subject,
-                            accountName: account?.name || '',
-                            accountEmail: account?.email || ''
-                          })
-                          setBody(resolved + '\n\n' + body.trimStart())
-                          setShowTemplates(false)
-                        }}
-                        className="flex w-full items-center px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700"
-                      >
-                        {tpl.name}
-                      </button>
-                    ))}
+                  <div className="absolute bottom-full left-0 z-20 mb-1 min-w-[220px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">
+                    {templates.length > 0 && (
+                      <>
+                        <p className="border-b border-gray-100 px-3 py-1.5 text-xs font-medium text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                          Vorlage einfügen
+                        </p>
+                        {templates.map((tpl) => (
+                          <button
+                            key={tpl.id}
+                            onMouseDown={() => {
+                              const account = accounts.find((a) => a.id === accountId)
+                              const resolved = resolveTemplateVars(tpl.body, {
+                                to,
+                                subject,
+                                accountName: account?.name || '',
+                                accountEmail: account?.email || ''
+                              })
+                              setBody(resolved + '\n\n' + body.trimStart())
+                              setShowTemplates(false)
+                            }}
+                            className="flex w-full items-center px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700"
+                          >
+                            {tpl.name}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {composeEmailId && (
+                      <>
+                        {templates.length > 0 && (
+                          <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
+                        )}
+                        <button
+                          onMouseDown={async () => {
+                            setShowTemplates(false)
+                            setIsGeneratingAiReply(true)
+                            try {
+                              const result = await window.electronAPI.emailSmartReply(composeEmailId, 'de')
+                              if (result.success && result.data) {
+                                setBody(result.data.fullReply + '\n\n' + body.trimStart())
+                              } else {
+                                setError(result.error ?? 'KI-Antwort konnte nicht generiert werden.')
+                              }
+                            } finally {
+                              setIsGeneratingAiReply(false)
+                            }
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                        >
+                          <span>✨</span>
+                          KI-Antwort generieren
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
+            )}
+            {isGeneratingAiReply && (
+              <span className="text-xs text-gray-400 animate-pulse">KI generiert Antwort…</span>
             )}
           </div>
           <div className="flex gap-3">
